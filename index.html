@@ -138,7 +138,10 @@
               <span class="setting-label" id="focus-label">Focus</span>
               <div class="stepper" role="group" aria-labelledby="focus-label">
                 <button class="stepper-btn" id="focus-minus" aria-label="Decrease focus">−</button>
-                <div class="stepper-value"><span id="focus-val">25</span><span class="stepper-unit">min</span></div>
+                <div class="stepper-value">
+                  <input class="stepper-input" id="focus-val" type="number" min="1" max="180" value="25" aria-label="Focus minutes" />
+                  <span class="stepper-unit">min</span>
+                </div>
                 <button class="stepper-btn" id="focus-plus" aria-label="Increase focus">+</button>
               </div>
             </div>
@@ -146,7 +149,10 @@
               <span class="setting-label" id="break-label">Break</span>
               <div class="stepper" role="group" aria-labelledby="break-label">
                 <button class="stepper-btn" id="break-minus" aria-label="Decrease break">−</button>
-                <div class="stepper-value"><span id="break-val">5</span><span class="stepper-unit">min</span></div>
+                <div class="stepper-value">
+                  <input class="stepper-input" id="break-val" type="number" min="1" max="60" value="5" aria-label="Break minutes" />
+                  <span class="stepper-unit">min</span>
+                </div>
                 <button class="stepper-btn" id="break-plus" aria-label="Increase break">+</button>
               </div>
             </div>

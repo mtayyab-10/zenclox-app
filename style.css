@@ -248,6 +248,27 @@ body {
 .stepper-btn:active { background:color-mix(in srgb,var(--active) 22%,transparent); }
 .stepper-value { flex:1;display:flex;align-items:baseline;justify-content:center;gap:3px;font-family:var(--mono);font-size:0.95rem;font-weight:600;color:var(--text); }
 .stepper-unit { font-family:var(--sans);font-size:0.68rem;color:var(--muted);font-weight:400; }
+.stepper-input {
+  width: 34px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-align: center;
+  padding: 0;
+  margin: 0;
+  outline: none;
+  -webkit-appearance: textfield;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+.stepper-input::-webkit-outer-spin-button,
+.stepper-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
 
 /* Sound Cards */
 .sound-cards { display:grid;grid-template-columns:1fr 1fr;gap:10px; }
@@ -2021,12 +2042,37 @@ body.breath-mode-active .focus-back-btn {
   transform: translateY(1px);
 }
 
+@media (max-width: 768px) {
+  .history-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+    padding: 12px 16px !important;
+  }
+  .history-header-left {
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+  .export-btn {
+    align-self: flex-start !important;
+    width: fit-content !important;
+  }
+}
+
 @media (max-width: 640px) {
   .focus-back-btn {
     top: 16px;
     left: 16px;
     padding: 6px 12px;
     font-size: 0.7rem;
+  }
+  /* Hide sound/music, shield, and palette buttons on mobile to make room and prevent overlap */
+  .sound-toggle-btn,
+  .shield-btn,
+  .palette-btn {
+    display: none !important;
   }
 }
 

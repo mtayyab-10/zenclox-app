@@ -982,11 +982,10 @@ const AIPredictor = {
     const updateSize = () => {
       if (this.canvas) {
         const dpr = window.devicePixelRatio || 1;
-        const rect = this.canvas.parentElement.getBoundingClientRect();
-        this.canvas.width = rect.width * dpr;
-        this.canvas.height = 90 * dpr;
-        this.canvas.style.width = `${rect.width}px`;
-        this.canvas.style.height = `90px`;
+        const w = this.canvas.clientWidth || 300;
+        const h = 90;
+        this.canvas.width = w * dpr;
+        this.canvas.height = h * dpr;
         this.renderForecast();
       }
     };
@@ -998,12 +997,11 @@ const AIPredictor = {
     if (!this.canvas || !this.ctx) return;
     const ctx = this.ctx;
     const dpr = window.devicePixelRatio || 1;
-    const rect = this.canvas.getBoundingClientRect();
-    const w = rect.width || this.canvas.parentElement.clientWidth;
-    const h = rect.height || 90;
+    const w = this.canvas.width / dpr;
+    const h = this.canvas.height / dpr;
 
     // Clear physical backing store
-    ctx.clearRect(0, 0, w * dpr, h * dpr);
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
     ctx.save();
     ctx.scale(dpr, dpr);

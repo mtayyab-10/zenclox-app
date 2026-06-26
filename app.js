@@ -1249,8 +1249,8 @@ function restoreTimerState() {
     const adj = s.wasRunning ? Math.max(0, s.remaining - Math.floor(age / 1000)) : s.remaining;
     if (adj <= 0) { localStorage.removeItem(STATE_KEY); return false; }
     remaining = adj;
-    dom.focusVal.textContent = focusMins;
-    dom.breakVal.textContent = breakMins;
+    dom.focusVal.value = focusMins;
+    dom.breakVal.value = breakMins;
     return s.wasRunning;
   } catch(_) { return false; }
 }
@@ -1786,7 +1786,7 @@ function initPresets() {
     chip.addEventListener('click', () => {
       const f = +chip.dataset.focus, b = +chip.dataset.break;
       if (isNaN(f) || isNaN(b)) return;
-      dom.focusVal.textContent = f; dom.breakVal.textContent = b;
+      dom.focusVal.value = f; dom.breakVal.value = b;
       if (isRunning) pauseTimer();
       focusMins = f; breakMins = b;
       setMode(isFocus); markActive(f, b);
@@ -1794,7 +1794,7 @@ function initPresets() {
   });
   markActive(focusMins, breakMins);
   dom.applyBtn.addEventListener('click', () => {
-    const f = +dom.focusVal.textContent, b = +dom.breakVal.textContent;
+    const f = +dom.focusVal.value, b = +dom.breakVal.value;
     if (f<1||f>180||b<1||b>60) return;
     if (isRunning) pauseTimer();
     focusMins = f; breakMins = b;
@@ -1807,7 +1807,7 @@ function initPresets() {
 
 function initSteppers() {
   function addHold(btn, valEl, dir, min, max) {
-    function step() { const v = +valEl.textContent; const nv = Math.max(min, Math.min(max, v+dir)); if(nv!==v) valEl.textContent = nv; }
+    function step() { const v = +valEl.value; const nv = Math.max(min, Math.min(max, v+dir)); if(nv!==v) valEl.value = nv; }
     let hold;
     const start = () => { step(); hold = setTimeout(() => { hold = setInterval(step, 80); }, 380); };
     const stop  = () => { clearTimeout(hold); clearInterval(hold); };
@@ -1819,6 +1819,29 @@ function initSteppers() {
   addHold(dom.focusPlus,  dom.focusVal,  1, 1, 180);
   addHold(dom.breakMinus, dom.breakVal, -1, 1, 60);
   addHold(dom.breakPlus,  dom.breakVal,  1, 1, 60);
+
+  // Direct manual entry validations
+  dom.focusVal.addEventListener('input', () => {
+    let v = parseInt(dom.focusVal.value);
+    if (isNaN(v)) return;
+    if (v > 180) dom.focusVal.value = 180;
+    if (v < 1) dom.focusVal.value = 1;
+  });
+  dom.focusVal.addEventListener('blur', () => {
+    let v = parseInt(dom.focusVal.value);
+    if (isNaN(v) || v < 1) dom.focusVal.value = 25;
+  });
+
+  dom.breakVal.addEventListener('input', () => {
+    let v = parseInt(dom.breakVal.value);
+    if (isNaN(v)) return;
+    if (v > 60) dom.breakVal.value = 60;
+    if (v < 1) dom.breakVal.value = 1;
+  });
+  dom.breakVal.addEventListener('blur', () => {
+    let v = parseInt(dom.breakVal.value);
+    if (isNaN(v) || v < 1) dom.breakVal.value = 5;
+  });
 }
 
 /* ============================================================
@@ -2180,8 +2203,8 @@ function init() {
   // Sync UI to restored/default state
   document.body.classList.toggle('mode-break', !isFocus);
   dom.modeLabel.textContent = isFocus ? 'Focus' : 'Break';
-  dom.focusVal.textContent  = focusMins;
-  dom.breakVal.textContent  = breakMins;
+  dom.focusVal.value  = focusMins;
+  dom.breakVal.value  = breakMins;
   document.querySelectorAll('.presets .preset-chip').forEach(c => c.classList.toggle('active', +c.dataset.focus===focusMins && +c.dataset.break===breakMins));
 
   updateDisplay();
