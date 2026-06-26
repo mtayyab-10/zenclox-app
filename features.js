@@ -711,8 +711,8 @@ const CommandPalette = {
         </div>
       `;
       item.addEventListener('click', () => {
-        cmd.action();
         this.close();
+        cmd.action();
       });
       list.appendChild(item);
     });
@@ -747,8 +747,8 @@ const CommandPalette = {
 
     const cmd = filtered[this.selectedIndex];
     if (cmd) {
-      cmd.action();
       this.close();
+      cmd.action();
     }
   }
 };
@@ -1673,13 +1673,10 @@ const OnboardingSystem = {
   currentStep: 0,
   steps: [],
   resizeHandler: null,
+  _hasEscListener: false,
+  _resizeTimer: null,
 
   init() {
-    // Check if completed already
-    if (localStorage.getItem('zenclox_onboarding_completed_v1') === 'true') {
-      return;
-    }
-
     this.steps = [
       {
         elementId: 'zen-toggle-btn',
@@ -1703,49 +1700,73 @@ const OnboardingSystem = {
       }
     ];
 
-    // Bind event for next button
     const nextBtn = document.getElementById('onboarding-next-btn');
     if (nextBtn) {
       nextBtn.addEventListener('click', () => this.next());
     }
 
-    // Bind event for skip ("Maybe Later") button
     const skipBtn = document.getElementById('onboarding-skip-btn');
     if (skipBtn) {
       skipBtn.addEventListener('click', () => this.finish());
     }
 
-    // Bind event for close (X) button
     const closeBtn = document.getElementById('onboarding-close-btn');
     if (closeBtn) {
       closeBtn.addEventListener('click', () => this.finish());
     }
 
-    // Bind Esc key global dismiss handler
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        const overlay = document.getElementById('onboarding-overlay');
-        if (overlay && !overlay.hasAttribute('hidden')) {
-          this.finish();
+    // Bind Esc key global dismiss handler (only once)
+    if (!this._hasEscListener) {
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          const overlay = document.getElementById('onboarding-overlay');
+          if (overlay && !overlay.hasAttribute('hidden')) {
+            this.finish();
+          }
         }
-      }
-    });
+      });
+      this._hasEscListener = true;
+    }
 
-    // Launch with delay to let initial loads finish
-    setTimeout(() => this.start(), 1500);
+    // Check if completed already for auto-start
+    if (localStorage.getItem('zenclox_onboarding_completed_v1') === 'true') {
+      return;
+    }
+
+    // Wait for first paint cycle to complete before launching
+    // This ensures all CSS transitions, theme loads, and layout shifts have settled
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setTimeout(() => this.start(), 800);
+      });
+    });
   },
 
   start() {
     const overlay = document.getElementById('onboarding-overlay');
+    const tooltip = document.getElementById('onboarding-tooltip');
     if (!overlay) return;
 
-    // Ensure element is visible
+    // Reset tooltip to invisible before showing overlay
+    if (tooltip) {
+      tooltip.style.opacity = '0';
+      tooltip.style.left = '0';
+      tooltip.style.top = '0';
+    }
+
+    // Show overlay
     overlay.removeAttribute('hidden');
     this.currentStep = 0;
     this.showStep();
 
-    // Recalculate positions on window resize
-    this.resizeHandler = () => this.showStep();
+    // Debounced resize handler to avoid stuttery recalculations
+    if (this.resizeHandler) {
+      window.removeEventListener('resize', this.resizeHandler);
+    }
+    this.resizeHandler = () => {
+      clearTimeout(this._resizeTimer);
+      this._resizeTimer = setTimeout(() => this.showStep(), 150);
+    };
     window.addEventListener('resize', this.resizeHandler);
   },
 
@@ -1756,11 +1777,19 @@ const OnboardingSystem = {
     const nextBtn = document.getElementById('onboarding-next-btn');
     if (!overlay || !tooltip || !textEl || this.currentStep >= this.steps.length) return;
 
+    // Immediately hide tooltip so it never flashes at the old/wrong position
+    tooltip.style.opacity = '0';
+
     const step = this.steps[this.currentStep];
     const el = document.getElementById(step.elementId);
 
     if (!el) {
-      // If element is not in DOM or not visible, skip
+      this.next();
+      return;
+    }
+
+    const initialRect = el.getBoundingClientRect();
+    if (initialRect.width === 0 && initialRect.height === 0) {
       this.next();
       return;
     }
@@ -1768,58 +1797,71 @@ const OnboardingSystem = {
     // Scroll to element smoothly
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-    // Delay calculation slightly to allow scroll to complete
+    // Wait for scroll to settle, then use rAF to ensure browser has painted
     setTimeout(() => {
-      const rect = el.getBoundingClientRect();
+      requestAnimationFrame(() => {
+        const rect = el.getBoundingClientRect();
 
-      // Coordinates relative to viewport because overlay is position: fixed
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-      const radius = Math.max(rect.width, rect.height) / 2 + 10;
-
-      // Draw the radial gradient on overlay background
-      overlay.style.background = `radial-gradient(circle ${radius}px at ${cx}px ${cy}px, transparent 96%, rgba(0, 0, 0, 0.8) 100%)`;
-
-      // Set tooltip text
-      textEl.innerHTML = step.text;
-
-      // Set button text for final step
-      if (this.currentStep === this.steps.length - 1) {
-        nextBtn.textContent = 'Finish ✓';
-      } else {
-        nextBtn.textContent = 'Next →';
-      }
-
-      // Position the tooltip nicely
-      tooltip.style.visibility = 'hidden'; // Hide during positioning measurements
-      tooltip.style.display = 'flex';
-
-      setTimeout(() => {
-        const spacing = 15;
-        let tooltipTop = cy + radius + spacing;
-        let tooltipLeft = cx - tooltip.offsetWidth / 2;
-
-        // Boundaries checks
-        if (tooltipLeft < 15) tooltipLeft = 15;
-        if (tooltipLeft + tooltip.offsetWidth > window.innerWidth - 15) {
-          tooltipLeft = window.innerWidth - tooltip.offsetWidth - 15;
+        // Verify rect is valid (not at 0,0 with no dimensions)
+        if (rect.width === 0 && rect.height === 0) {
+          this.next();
+          return;
         }
 
-        // If tooltip overflows bottom of screen, position it above the target element instead
-        if (tooltipTop + tooltip.offsetHeight > window.innerHeight - 15) {
-          tooltipTop = rect.top - radius - tooltip.offsetHeight - spacing;
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const radius = Math.max(rect.width, rect.height) / 2 + 10;
+
+        // Draw the radial gradient spotlight
+        overlay.style.background = `radial-gradient(circle ${radius}px at ${cx}px ${cy}px, transparent 96%, rgba(0, 0, 0, 0.8) 100%)`;
+
+        // Set tooltip text
+        textEl.innerHTML = step.text;
+
+        // Set button text for final step
+        if (this.currentStep === this.steps.length - 1) {
+          nextBtn.textContent = 'Finish ✓';
+        } else {
+          nextBtn.textContent = 'Next →';
         }
 
-        // If it also overflows top, center it vertically in viewport
-        if (tooltipTop < 15) {
-          tooltipTop = window.innerHeight / 2 - tooltip.offsetHeight / 2;
-        }
+        // Make tooltip visible for measurement but keep it invisible via opacity
+        tooltip.style.display = 'flex';
+        tooltip.style.opacity = '0';
 
-        tooltip.style.left = `${tooltipLeft}px`;
-        tooltip.style.top = `${tooltipTop}px`;
-        tooltip.style.visibility = 'visible';
-      }, 50);
-    }, 350);
+        // Use another rAF to guarantee the tooltip has been laid out for measurement
+        requestAnimationFrame(() => {
+          const spacing = 15;
+          let tooltipTop = cy + radius + spacing;
+          let tooltipLeft = cx - tooltip.offsetWidth / 2;
+
+          // Boundary checks
+          if (tooltipLeft < 15) tooltipLeft = 15;
+          if (tooltipLeft + tooltip.offsetWidth > window.innerWidth - 15) {
+            tooltipLeft = window.innerWidth - tooltip.offsetWidth - 15;
+          }
+
+          // If tooltip overflows bottom, position above the target
+          if (tooltipTop + tooltip.offsetHeight > window.innerHeight - 15) {
+            tooltipTop = rect.top - radius - tooltip.offsetHeight - spacing;
+          }
+
+          // If it also overflows top, center vertically in viewport
+          if (tooltipTop < 15) {
+            tooltipTop = window.innerHeight / 2 - tooltip.offsetHeight / 2;
+          }
+
+          // Set final position BEFORE making visible
+          tooltip.style.left = `${tooltipLeft}px`;
+          tooltip.style.top = `${tooltipTop}px`;
+
+          // Fade in after position is locked — one more rAF to ensure paint
+          requestAnimationFrame(() => {
+            tooltip.style.opacity = '1';
+          });
+        });
+      });
+    }, 400);
   },
 
   next() {
@@ -1833,13 +1875,19 @@ const OnboardingSystem = {
 
   finish() {
     const overlay = document.getElementById('onboarding-overlay');
+    const tooltip = document.getElementById('onboarding-tooltip');
+    if (tooltip) {
+      tooltip.style.opacity = '0';
+    }
     if (overlay) {
       overlay.setAttribute('hidden', '');
     }
     localStorage.setItem('zenclox_onboarding_completed_v1', 'true');
     if (this.resizeHandler) {
       window.removeEventListener('resize', this.resizeHandler);
+      this.resizeHandler = null;
     }
+    clearTimeout(this._resizeTimer);
   }
 };
 
