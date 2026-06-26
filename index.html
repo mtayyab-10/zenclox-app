@@ -24,6 +24,15 @@
 
   <div class="app-shell">
 
+    <!-- FLOATING FOCUS EXIT BUTTON -->
+    <button class="focus-back-btn" id="focus-back-btn" aria-label="Go Back" title="Go Back (Esc)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="19" y1="12" x2="5" y2="12"></line>
+        <polyline points="12 19 5 12 12 5"></polyline>
+      </svg>
+      <span>Back</span>
+    </button>
+
     <!-- HEADER -->
     <header class="app-header">
       <div class="logo">
@@ -194,6 +203,17 @@
             <input class="volume-slider" id="volume-slider" type="range" min="0" max="100" value="50" aria-label="Master volume" />
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
           </div>
+          
+          <!-- Sound Mix Presets -->
+          <div class="sound-presets-section" style="margin-top: 10px; margin-bottom: 12px;">
+            <span class="setting-label" style="font-size: 0.72rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; display: block; margin-bottom: 6px;">Mix Presets</span>
+            <div class="sound-presets" style="display: flex; gap: 6px; flex-wrap: wrap;" id="sound-presets-container">
+              <button class="sound-preset-chip" id="sound-preset-storm" type="button" data-rain="70" data-space="0" data-fire="50" data-binaural="30" style="padding: 4px 10px; font-size: 0.7rem;">⛈️ Cozy Storm</button>
+              <button class="sound-preset-chip" id="sound-preset-deep" type="button" data-rain="0" data-space="60" data-fire="0" data-binaural="80" style="padding: 4px 10px; font-size: 0.7rem;">🌌 Space Void</button>
+              <button class="sound-preset-chip" id="sound-preset-hearth" type="button" data-rain="40" data-space="0" data-fire="80" data-binaural="0" style="padding: 4px 10px; font-size: 0.7rem;">🔥 Hearthside</button>
+            </div>
+          </div>
+          
           <button class="apply-btn" id="apply-settings-btn">Apply Settings</button>
         </div>
       </div>
@@ -263,11 +283,14 @@
         <kbd>Space</kbd> play/pause &nbsp;·&nbsp; <kbd>R</kbd> reset &nbsp;·&nbsp;
         <kbd>S</kbd> skip &nbsp;·&nbsp; <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> presets &nbsp;·&nbsp; <kbd>I</kbd> distraction
       </p>
-      <!-- ZEN ROCK GARDEN -->
-      <div class="zen-rock-garden" id="zen-rock-garden" hidden>
-        <div class="zen-pebble" data-index="0" title="Grounding Stone" style="--rot: -12deg; width: 34px; height: 20px;"></div>
-        <div class="zen-pebble" data-index="1" title="Reflection Stone" style="--rot: 5deg; width: 28px; height: 24px;"></div>
-        <div class="zen-pebble" data-index="2" title="Presence Stone" style="--rot: -2deg; width: 32px; height: 21px;"></div>
+      <!-- ZEN ROCK GARDEN (WITH GENERATIVE CANVAS) -->
+      <div class="zen-rock-garden" id="zen-rock-garden" hidden style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
+        <canvas id="zen-garden-canvas" style="display: block; width: 100%; height: 160px; pointer-events: none;"></canvas>
+        <div class="zen-pebbles-row" style="display: flex; justify-content: center; gap: 14px; margin-top: 2px;">
+          <div class="zen-pebble" data-index="0" title="Grounding Stone" style="--rot: -12deg; width: 34px; height: 20px;"></div>
+          <div class="zen-pebble" data-index="1" title="Reflection Stone" style="--rot: 5deg; width: 28px; height: 24px;"></div>
+          <div class="zen-pebble" data-index="2" title="Presence Stone" style="--rot: -2deg; width: 32px; height: 21px;"></div>
+        </div>
         <div class="zen-pebble-quote" id="zen-pebble-quote"></div>
       </div>
     </main>
@@ -511,6 +534,21 @@
       </div>
       
       <button class="modal-primary-btn" id="report-export-btn" style="margin-top: 18px;">💾 Export Shareable Card</button>
+      
+      <!-- Virality/Sharing Actions -->
+      <div style="width: 100%; text-align: center; margin-top: 14px; border-top: 1px solid var(--border); padding-top: 14px;">
+        <span style="font-size: 0.65rem; color: var(--muted); display: block; margin-bottom: 8px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;">Share Your Focus Stats</span>
+        <div style="display: flex; gap: 8px; width: 100%; margin-bottom: 12px;">
+          <button class="preset-chip" id="share-twitter-btn" style="flex: 1; justify-content: center; font-size: 0.72rem; padding: 8px; font-weight: 500;" type="button">🐦 Share on X</button>
+          <button class="preset-chip" id="share-linkedin-btn" style="flex: 1; justify-content: center; font-size: 0.72rem; padding: 8px; font-weight: 500;" type="button">💼 LinkedIn</button>
+        </div>
+        
+        <span style="font-size: 0.65rem; color: var(--muted); display: block; margin-bottom: 6px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;">Embed GitHub Profile Badge</span>
+        <div style="position: relative; display: flex; width: 100%;">
+          <input type="text" id="github-badge-code" readonly style="width: 100%; font-size: 0.62rem; padding: 8px 12px; font-family: var(--mono); background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: var(--rx); outline: none; cursor: pointer; text-align: center;" value="[![Zenclox Focus](https://img.shields.io/badge/Zenclox-In%20Zone-c084fc?style=flat-square&logo=clock)](https://github.com/mtayyab-10/zenclox-app)" />
+        </div>
+        <span id="badge-copy-toast" style="font-size: 0.55rem; color: var(--focus); display: block; margin-top: 4px; opacity: 0; transition: opacity 0.2s;">Code copied to clipboard!</span>
+      </div>
     </div>
   </div>
 
@@ -525,6 +563,9 @@
       </div>
     </div>
   </div>
+
+  <!-- ZEN BACKGROUND CANVAS (MOUNTAINS & CONSTELLATIONS) -->
+  <canvas id="zen-bg-canvas" aria-hidden="true"></canvas>
 
   <!-- ZEN WAVE CANVAS -->
   <canvas id="zen-wave-canvas" aria-hidden="true"></canvas>
