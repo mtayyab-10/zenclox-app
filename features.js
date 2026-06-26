@@ -50,11 +50,12 @@ const getActiveColor = () => {
 // ============================================================
 const TimeWarp = {
   update() {
-    const timerRing = document.querySelector('.timer-ring-wrap');
+    const timerRing = document.querySelector('.timer-ring');
     if (!timerRing) return;
 
     if (document.body && document.body.classList.contains('zen-mode-active')) {
-      // In Zen mode, maintain dynamic scaling but keep centering
+      // In Zen mode, let the CSS keyframe pulse animation handle scaling/glows to keep it perfectly smooth
+      return;
     }
 
     if (window.isFocus) {
@@ -99,10 +100,16 @@ const DNASystem = {
     this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
     this.canvas.addEventListener('mouseleave', () => this.handleMouseLeave());
 
-    // Resize responsiveness
+    // Resize responsiveness (High-DPI aware)
     const resizeObserver = new ResizeObserver(() => {
       if (this.canvas) {
-        this.canvas.width = this.canvas.parentElement.clientWidth;
+        const dpr = window.devicePixelRatio || 1;
+        const rect = this.canvas.parentElement.getBoundingClientRect();
+        this.canvas.width = rect.width * dpr;
+        this.canvas.height = 260 * dpr;
+        this.canvas.style.width = `${rect.width}px`;
+        this.canvas.style.height = `260px`;
+        this.renderStrand();
       }
     });
     resizeObserver.observe(this.canvas.parentElement);
@@ -129,14 +136,22 @@ const DNASystem = {
   renderStrand() {
     if (!this.canvas || !this.ctx) return;
     const ctx = this.ctx;
-    const w = this.canvas.width;
-    const h = this.canvas.height;
-    ctx.clearRect(0, 0, w, h);
+    const dpr = window.devicePixelRatio || 1;
+    const rect = this.canvas.getBoundingClientRect();
+    const w = rect.width || this.canvas.parentElement.clientWidth;
+    const h = rect.height || 260;
+
+    // Clear entire physical backing store
+    ctx.clearRect(0, 0, w * dpr, h * dpr);
+
+    ctx.save();
+    ctx.scale(dpr, dpr);
 
     const sessions = window.focusHistory || [];
     if (sessions.length === 0) {
       // Draw a template helix if no sessions yet
       this.drawHelixTemplate(w, h);
+      ctx.restore();
       return;
     }
 
@@ -256,6 +271,8 @@ const DNASystem = {
         drawNode(p.right, false);
       }
     });
+
+    ctx.restore();
   },
 
   drawHelixTemplate(w, h) {
@@ -339,19 +356,21 @@ const DNASystem = {
     const rect = this.canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
+    const w = rect.width;
+    const h = rect.height;
 
     const padding = 30;
-    const usableH = this.canvas.height - padding * 2;
+    const usableH = h - padding * 2;
     const nodeCount = sessions.length;
     let closestIndex = -1;
     let minDistance = 22; // Hover hit radius
 
-    // Look for matching node in helix projection
+    // Look for matching node in helix projection (using logical CSS coordinates)
     for (let i = 0; i < nodeCount; i++) {
       const y = padding + (usableH * (i / Math.max(1, nodeCount - 1)));
       const sessionAngle = this.angle + i * 1.1;
-      const x1 = this.canvas.width / 2 + 45 * Math.sin(sessionAngle);
-      const x2 = this.canvas.width / 2 - 45 * Math.sin(sessionAngle);
+      const x1 = w / 2 + 45 * Math.sin(sessionAngle);
+      const x2 = w / 2 - 45 * Math.sin(sessionAngle);
 
       const d1 = Math.hypot(mouseX - x1, mouseY - y);
       const d2 = Math.hypot(mouseX - x2, mouseY - y);
@@ -380,8 +399,8 @@ const DNASystem = {
         </div>
       `;
       tooltip.style.display = 'block';
-      tooltip.style.left = `${Math.min(mouseX + 16, this.canvas.width - 170)}px`;
-      tooltip.style.top = `${Math.min(mouseY + 12, this.canvas.height - 100)}px`;
+      tooltip.style.left = `${Math.min(mouseX + 16, w - 170)}px`;
+      tooltip.style.top = `${Math.min(mouseY + 12, h - 100)}px`;
     } else {
       tooltip.style.display = 'none';
     }
@@ -959,10 +978,16 @@ const AIPredictor = {
     if (!this.canvas) return;
     this.ctx = this.canvas.getContext('2d');
 
-    // Fit canvas resolution to parent width
+    // Fit canvas resolution to parent width (High-DPI aware)
     const updateSize = () => {
       if (this.canvas) {
-        this.canvas.width = this.canvas.parentElement.clientWidth;
+        const dpr = window.devicePixelRatio || 1;
+        const rect = this.canvas.parentElement.getBoundingClientRect();
+        this.canvas.width = rect.width * dpr;
+        this.canvas.height = 90 * dpr;
+        this.canvas.style.width = `${rect.width}px`;
+        this.canvas.style.height = `90px`;
+        this.renderForecast();
       }
     };
     updateSize();
@@ -972,9 +997,16 @@ const AIPredictor = {
   renderForecast() {
     if (!this.canvas || !this.ctx) return;
     const ctx = this.ctx;
-    const w = this.canvas.width;
-    const h = this.canvas.height;
-    ctx.clearRect(0, 0, w, h);
+    const dpr = window.devicePixelRatio || 1;
+    const rect = this.canvas.getBoundingClientRect();
+    const w = rect.width || this.canvas.parentElement.clientWidth;
+    const h = rect.height || 90;
+
+    // Clear physical backing store
+    ctx.clearRect(0, 0, w * dpr, h * dpr);
+
+    ctx.save();
+    ctx.scale(dpr, dpr);
 
     const history = this.getAllHistory();
     const theme = document.documentElement.getAttribute('data-theme') || 'void';
@@ -1108,6 +1140,8 @@ const AIPredictor = {
     ctx.fillText('1PM', 5 * spacing, h - 2);
     ctx.fillText('5PM', 9 * spacing, h - 2);
     ctx.fillText('9PM', 13 * spacing, h - 2);
+
+    ctx.restore();
   },
 
   getAllHistory() {
@@ -1401,28 +1435,9 @@ function interpolateColor(color1, color2, factor) {
 
 window.updateZenColors = function() {
   if (!document.body.classList.contains('zen-mode-active')) return;
-  const rem = window.remaining || 1500;
-  const tot = window.totalSecs || 1500;
-  const pct = rem / tot;
   
-  let currentColors;
-  if (pct >= 0.5) {
-    const f = (1.0 - pct) / 0.5;
-    currentColors = {
-      c1: interpolateColor(ZEN_STAGES[0].c1, ZEN_STAGES[1].c1, f),
-      c2: interpolateColor(ZEN_STAGES[0].c2, ZEN_STAGES[1].c2, f),
-      c3: interpolateColor(ZEN_STAGES[0].c3, ZEN_STAGES[1].c3, f),
-      c4: interpolateColor(ZEN_STAGES[0].c4, ZEN_STAGES[1].c4, f)
-    };
-  } else {
-    const f = (0.5 - pct) / 0.5;
-    currentColors = {
-      c1: interpolateColor(ZEN_STAGES[1].c1, ZEN_STAGES[2].c1, f),
-      c2: interpolateColor(ZEN_STAGES[1].c2, ZEN_STAGES[2].c2, f),
-      c3: interpolateColor(ZEN_STAGES[1].c3, ZEN_STAGES[2].c3, f),
-      c4: interpolateColor(ZEN_STAGES[1].c4, ZEN_STAGES[2].c4, f)
-    };
-  }
+  // Persist the initial Cosmic Midnight stage colors till the end of the session
+  const currentColors = ZEN_STAGES[0];
   
   document.body.style.setProperty('--zen-bg-1', currentColors.c1);
   document.body.style.setProperty('--zen-bg-2', currentColors.c2);
@@ -1570,6 +1585,499 @@ const ZenPebbles = {
   }
 };
 
+const GardenSystem = {
+  canvas: null,
+  ctx: null,
+  animId: null,
+  growthProgress: 0,
+
+  init() {
+    this.canvas = document.getElementById('zen-garden-canvas');
+    if (!this.canvas) return;
+    this.ctx = this.canvas.getContext('2d');
+    
+    const resize = () => {
+      if (this.canvas) {
+        const dpr = window.devicePixelRatio || 1;
+        const rect = this.canvas.getBoundingClientRect();
+        this.canvas.width = rect.width * dpr;
+        this.canvas.height = 160 * dpr;
+        this.canvas.style.width = `${rect.width}px`;
+        this.canvas.style.height = `160px`;
+      }
+    };
+    resize();
+    window.addEventListener('resize', resize);
+  },
+
+  start() {
+    if (this.animId) return;
+    this.growthProgress = 0;
+    this.animate();
+  },
+
+  stop() {
+    if (this.animId) {
+      cancelAnimationFrame(this.animId);
+      this.animId = null;
+    }
+  },
+
+  animate() {
+    if (!this.canvas || !this.ctx) return;
+    const ctx = this.ctx;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = this.canvas.getBoundingClientRect();
+    const w = rect.width || this.canvas.parentElement.clientWidth;
+    const h = rect.height || 160;
+
+    ctx.clearRect(0, 0, w * dpr, h * dpr);
+
+    ctx.save();
+    ctx.scale(dpr, dpr);
+
+    // Calculate dynamic growth target based on time elapsed
+    const elapsed = window.totalSecs - window.remaining;
+    const pct = window.totalSecs > 0 ? (elapsed / window.totalSecs) : 0;
+    
+    // Smooth interpolation for tree growth
+    this.growthProgress += (pct - this.growthProgress) * 0.05;
+    
+    // Base recursive depth increases with total history completed
+    let historyCount = 0;
+    try {
+      historyCount = (window.focusHistory || []).length;
+    } catch(e) {}
+    const baseDepth = 2 + Math.min(Math.floor(historyCount / 2), 3); // max depth 5
+
+    const activeColor = getActiveColor();
+
+    // Draw generative trunk
+    const startX = w / 2;
+    const startY = h - 10;
+    const trunkLen = 42 + Math.min(historyCount * 2, 10);
+    
+    this.drawBranch(ctx, startX, startY, trunkLen * Math.min(1.0, this.growthProgress + 0.15), -Math.PI / 2, 7, baseDepth, activeColor, this.growthProgress);
+
+    ctx.restore();
+    this.animId = requestAnimationFrame(() => this.animate());
+  },
+
+  drawBranch(ctx, x, y, len, angle, branchWidth, depth, leafColor, progress) {
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    const endX = x + Math.cos(angle) * len;
+    const endY = y + Math.sin(angle) * len;
+    ctx.lineTo(endX, endY);
+    ctx.strokeStyle = document.documentElement.getAttribute('data-theme') === 'light' ? 'rgba(15,23,42,0.72)' : 'rgba(232,232,240,0.68)';
+    ctx.lineWidth = branchWidth;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    if (depth <= 0) {
+      // Draw organic glowing leaf blossoms
+      ctx.beginPath();
+      const leafRad = 3.5 * Math.min(1.0, progress * 1.5);
+      ctx.arc(endX, endY, leafRad, 0, Math.PI * 2);
+      ctx.fillStyle = leafColor;
+      ctx.shadowBlur = 4;
+      ctx.shadowColor = leafColor;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      return;
+    }
+
+    // Recurse with organic wind sway
+    const nextLen = len * 0.74;
+    const nextWidth = branchWidth * 0.68;
+    const spread = 0.38 + 0.05 * Math.sin(Date.now() / 2000 + depth);
+
+    this.drawBranch(ctx, endX, endY, nextLen, angle - spread, nextWidth, depth - 1, leafColor, progress);
+    this.drawBranch(ctx, endX, endY, nextLen, angle + spread, nextWidth, depth - 1, leafColor, progress);
+  }
+};
+
+const ZenBgSystem = {
+  canvas: null,
+  ctx: null,
+  animId: null,
+  stars: [],
+  noiseValues: [],
+
+  init() {
+    window.ZenBgSystem = this;
+    this.canvas = document.getElementById('zen-bg-canvas');
+    if (!this.canvas) return;
+    this.ctx = this.canvas.getContext('2d');
+    this.initNoise();
+
+    const handleResize = () => {
+      if (this.canvas) {
+        const dpr = window.devicePixelRatio || 1;
+        this.canvas.width = window.innerWidth * dpr;
+        this.canvas.height = window.innerHeight * dpr;
+        this.canvas.style.width = `${window.innerWidth}px`;
+        this.canvas.style.height = `${window.innerHeight}px`;
+        this.ctx.scale(dpr, dpr);
+        this.generateStars();
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    handleResize();
+  },
+
+  initNoise() {
+    if (this.noiseValues.length > 0) return;
+    const rng = this.hashPRNG(42);
+    for (let i = 0; i < 1024; i++) {
+      this.noiseValues.push(rng());
+    }
+  },
+
+  hashPRNG(seed) {
+    let s = seed;
+    return function() {
+      s = (s * 1664525 + 1013904223) % 4294967296;
+      return s / 4294967296;
+    };
+  },
+
+  noise(x) {
+    const len = this.noiseValues.length;
+    const idx = Math.floor(x);
+    const frac = x - idx;
+    const t = frac * frac * (3 - 2 * frac);
+    const i1 = ((idx % len) + len) % len;
+    const i2 = (((idx + 1) % len) + len) % len;
+    return this.noiseValues[i1] * (1 - t) + this.noiseValues[i2] * t;
+  },
+
+  getMountainHeight(x, baseY, amplitude, roughness, scale, octaves, seed) {
+    let y = 0;
+    let currentAmp = amplitude;
+    let currentScale = scale;
+    const fullOctaves = Math.floor(octaves);
+    const fracOctave = octaves - fullOctaves;
+    
+    for (let i = 0; i < fullOctaves; i++) {
+      y += (this.noise(x * currentScale + i * 35.7 + seed) - 0.5) * currentAmp;
+      currentAmp *= roughness;
+      currentScale *= 2.0;
+    }
+    if (fracOctave > 0) {
+      y += (this.noise(x * currentScale + fullOctaves * 35.7 + seed) - 0.5) * currentAmp * fracOctave;
+    }
+    return baseY + y;
+  },
+
+  getTodayElapsedFocusMinutes() {
+    let mins = 0;
+    const history = window.focusHistory || [];
+    history.forEach(s => {
+      mins += (s.duration || 0) / 60;
+    });
+    if (window.isRunning && window.isFocus) {
+      const elapsedSecs = window.totalSecs - window.remaining;
+      mins += elapsedSecs / 60;
+    }
+    return mins;
+  },
+
+  addCompletedSessionStar() {
+    const starsKey = 'zenclox_constellation_stars_v1';
+    let stars = [];
+    try {
+      stars = JSON.parse(localStorage.getItem(starsKey)) || [];
+    } catch(e) {}
+    
+    const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    stars = stars.filter(s => s.timestamp > oneWeekAgo);
+
+    const x = 0.08 + Math.random() * 0.84;
+    const y = 0.08 + Math.random() * 0.44;
+    
+    stars.push({
+      timestamp: Date.now(),
+      x,
+      y
+    });
+
+    try {
+      localStorage.setItem(starsKey, JSON.stringify(stars));
+    } catch(e) {}
+
+    this.generateStars();
+  },
+
+  generateStars() {
+    if (!this.canvas) return;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const starsKey = 'zenclox_constellation_stars_v1';
+    
+    let storedStars = [];
+    try {
+      storedStars = JSON.parse(localStorage.getItem(starsKey)) || [];
+    } catch(e) {}
+
+    const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    storedStars = storedStars.filter(s => s.timestamp > oneWeekAgo);
+
+    // Fallback: If local storage has no stars but we have completed sessions, seed them
+    const allHistory = window.focusHistory || [];
+    if (storedStars.length === 0 && allHistory.length > 0) {
+      allHistory.forEach((s, idx) => {
+        let hash = idx * 79;
+        const timeStr = s.time || '';
+        for (let i = 0; i < timeStr.length; i++) {
+          hash = (hash << 5) - hash + timeStr.charCodeAt(i);
+        }
+        
+        const seedX = 0.08 + (Math.abs(hash % 1000) / 1000) * 0.84;
+        const seedY = 0.08 + (Math.abs((hash >> 3) % 1000) / 1000) * 0.44;
+        
+        storedStars.push({
+          timestamp: Date.now() - idx * 2 * 3600 * 1000,
+          x: seedX,
+          y: seedY
+        });
+      });
+      try {
+        localStorage.setItem(starsKey, JSON.stringify(storedStars));
+      } catch(e) {}
+    }
+
+    this.stars = [];
+
+    // Add completed focus stars
+    storedStars.forEach((s, idx) => {
+      this.stars.push({
+        x: s.x * w,
+        y: s.y * h,
+        relX: s.x,
+        relY: s.y,
+        size: 2.0 + (idx % 3) * 0.6,
+        twinkleOffset: idx * 1.5,
+        twinklePeriod: 350 + (idx % 4) * 100,
+        completed: true,
+        timestamp: s.timestamp
+      });
+    });
+
+    // Add ambient background stars
+    const ambientCount = 35;
+    for (let i = 0; i < ambientCount; i++) {
+      const seedX = Math.sin(i * 12345.67) * 0.5 + 0.5;
+      const seedY = Math.cos(i * 98765.43) * 0.5 + 0.5;
+      this.stars.push({
+        x: seedX * w,
+        y: seedY * 0.55 * h,
+        relX: seedX,
+        relY: seedY * 0.55,
+        size: 0.6 + (i % 2) * 0.6,
+        twinkleOffset: i * 2.3,
+        twinklePeriod: 600 + (i % 3) * 200,
+        completed: false
+      });
+    }
+  },
+
+  start() {
+    if (this.animId) return;
+    this.generateStars();
+    this.animate();
+  },
+
+  stop() {
+    if (this.animId) {
+      cancelAnimationFrame(this.animId);
+      this.animId = null;
+    }
+    if (this.ctx && this.canvas) {
+      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+  },
+
+  drawSumiRidge(ctx, points, theme, fillStyle, strokeStyle, opacity, h, baseY) {
+    if (points.length < 2) return;
+
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, h);
+    ctx.lineTo(points[0].x, points[0].y);
+
+    for (let i = 1; i < points.length - 2; i++) {
+      const xc = (points[i].x + points[i + 1].x) / 2;
+      const yc = (points[i].y + points[i + 1].y) / 2;
+      ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+    }
+    ctx.quadraticCurveTo(
+      points[points.length - 2].x,
+      points[points.length - 2].y,
+      points[points.length - 1].x,
+      points[points.length - 1].y
+    );
+
+    ctx.lineTo(points[points.length - 1].x, h);
+    ctx.closePath();
+
+    // Soft gradient fill
+    const grad = ctx.createLinearGradient(0, baseY - 80, 0, h);
+    const rgb = this.hexToRgb(fillStyle);
+
+    grad.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity})`);
+    grad.addColorStop(0.3, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity * 0.75})`);
+    grad.addColorStop(0.7, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${opacity * 0.18})`);
+    grad.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.0)`);
+
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Sharp ink stroke line on the ridge peak
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = strokeStyle;
+    ctx.stroke();
+  },
+
+  animate() {
+    if (!this.canvas || !this.ctx) return;
+    const ctx = this.ctx;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+
+    ctx.clearRect(0, 0, w, h);
+
+    const theme = document.documentElement.getAttribute('data-theme') || 'void';
+    const activeColor = getActiveColor();
+
+    // 1. Draw Constellation lines
+    const completedStars = this.stars.filter(s => s.completed);
+    ctx.lineWidth = 0.8;
+    ctx.strokeStyle = theme === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)';
+    const connectDist = 120;
+    for (let i = 0; i < completedStars.length; i++) {
+      for (let j = i + 1; j < completedStars.length; j++) {
+        const s1 = completedStars[i];
+        const s2 = completedStars[j];
+        const dx = s1.x - s2.x;
+        const dy = s1.y - s2.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < connectDist) {
+          ctx.beginPath();
+          ctx.moveTo(s1.x, s1.y);
+          ctx.lineTo(s2.x, s2.y);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Draw twinkling stars
+    this.stars.forEach((s) => {
+      const tVal = (Date.now() + s.twinkleOffset * 1000) / s.twinklePeriod;
+      const opacity = 0.35 + 0.65 * Math.sin(tVal);
+
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+      if (s.completed) {
+        ctx.fillStyle = activeColor;
+        ctx.globalAlpha = opacity;
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.size * 2.5, 0, Math.PI * 2);
+        ctx.fillStyle = activeColor;
+        ctx.globalAlpha = opacity * 0.16;
+        ctx.fill();
+      } else {
+        ctx.fillStyle = theme === 'light' ? 'rgba(0, 0, 0, 0.35)' : 'rgba(255, 255, 255, 0.45)';
+        ctx.globalAlpha = opacity * 0.6;
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1.0;
+    });
+
+    // 2. Generative Sumi-e Mountains
+    const focusMins = this.getTodayElapsedFocusMinutes();
+    
+    // Smooth fractal detail progression: detail levels mapped to octaves
+    const baseOctaves = 3.0;
+    const maxExtraOctaves = 4.0;
+    const octaves = baseOctaves + Math.min(focusMins / 5.0, maxExtraOctaves);
+    
+    // Smooth height growth
+    const growthFactor = 1.0 + Math.min(focusMins / 30.0, 0.4);
+
+    const layers = [
+      {
+        baseY: h - 170,
+        amp: 45,
+        roughness: 0.38,
+        scale: 0.003,
+        seed: 123.45,
+        opacity: 0.12,
+        fill: theme === 'light' ? '#78716c' : '#44403c',
+        stroke: theme === 'light' ? 'rgba(120, 113, 108, 0.22)' : 'rgba(68, 64, 60, 0.35)'
+      },
+      {
+        baseY: h - 110,
+        amp: 32,
+        roughness: 0.42,
+        scale: 0.006,
+        seed: 456.78,
+        opacity: 0.22,
+        fill: theme === 'light' ? '#57534e' : '#292524',
+        stroke: theme === 'light' ? 'rgba(87, 83, 78, 0.3)' : 'rgba(41, 37, 36, 0.45)'
+      },
+      {
+        baseY: h - 50,
+        amp: 20,
+        roughness: 0.46,
+        scale: 0.012,
+        seed: 789.01,
+        opacity: 0.38,
+        fill: theme === 'light' ? '#292524' : '#1c1917',
+        stroke: theme === 'light' ? 'rgba(41, 37, 36, 0.45)' : 'rgba(28, 25, 22, 0.65)'
+      }
+    ];
+
+    layers.forEach((layer) => {
+      const points = [];
+      const step = 8;
+      const layerAmp = layer.amp * growthFactor;
+
+      for (let x = 0; x <= w + step; x += step) {
+        const y = this.getMountainHeight(x, layer.baseY, layerAmp, layer.roughness, layer.scale, octaves, layer.seed);
+        points.push({ x, y });
+      }
+
+      // Draw the bezier overlapping ridge
+      this.drawSumiRidge(ctx, points, theme, layer.fill, layer.stroke, layer.opacity, h, layer.baseY);
+
+      // Draw mist (foggy horizon wash)
+      const mistColor = theme === 'light' ? '255, 255, 255' : '10, 10, 12';
+      const mistGrad = ctx.createLinearGradient(0, layer.baseY - 40, 0, h);
+      mistGrad.addColorStop(0, `rgba(${mistColor}, 0)`);
+      mistGrad.addColorStop(0.4, `rgba(${mistColor}, ${0.18 * layer.opacity})`);
+      mistGrad.addColorStop(0.8, `rgba(${mistColor}, ${0.45 * layer.opacity})`);
+      mistGrad.addColorStop(1, `rgba(${mistColor}, 0.8)`);
+      ctx.fillStyle = mistGrad;
+      ctx.fillRect(0, layer.baseY - 40, w, h - (layer.baseY - 40));
+    });
+
+    this.animId = requestAnimationFrame(() => this.animate());
+  },
+
+  hexToRgb(hex) {
+    const shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
+    const fullHex = hex.replace(shorthandRegex, (m, r, g, b) => r + r + g + g + b + b);
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(fullHex);
+    return result ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16)
+    } : { r: 50, g: 50, b: 50 };
+  }
+};
+
 const ZenMode = {
   active: false,
 
@@ -1603,9 +2111,11 @@ const ZenMode = {
       }
     });
 
-    // Initialize sub-systems for pebbles and wave canvas
+    // Initialize sub-systems for pebbles, wave canvas, generative garden, and sumi-e bg system
     ZenPebbles.init();
     ZenWave.init();
+    GardenSystem.init();
+    ZenBgSystem.init();
   },
 
   toggle() {
@@ -1646,15 +2156,19 @@ const ZenMode = {
       // Trigger Grounding Sound Bath (Tibetan Singing Bowl)
       if (window.playSingingBowl) window.playSingingBowl();
 
-      // Start wave visual ripples
+      // Start wave visual ripples, generative tree growth loop, and sumi-e bg system
       ZenWave.start();
+      GardenSystem.start();
+      ZenBgSystem.start();
 
       // Set initial colors
       if (window.updateZenColors) window.updateZenColors();
     } else {
       document.body.style.cursor = 'default';
-      // Stop wave visual ripples
+      // Stop wave visual ripples, generative tree growth loop, and sumi-e bg system
       ZenWave.stop();
+      GardenSystem.stop();
+      ZenBgSystem.stop();
       // Remove circadian color variables
       document.body.style.removeProperty('--zen-bg-1');
       document.body.style.removeProperty('--zen-bg-2');
@@ -2051,17 +2565,14 @@ const initFeatures = () => {
 
         if (cell && dateMoods[key] && dateMoods[key].length > 0) {
           const moods = dateMoods[key];
-          const colors = moods.map(m => MOOD_COLORS[m || 'neutral']);
-
-          if (colors.length === 1) {
-            cell.style.borderColor = colors[0];
-          } else {
-            // Apply multi-mood linear gradient border
-            cell.style.border = '2px solid transparent';
-            cell.style.backgroundImage = `linear-gradient(var(--surface-2), var(--surface-2)), linear-gradient(135deg, ${colors.join(', ')})`;
-            cell.style.backgroundOrigin = 'border-box';
-            cell.style.backgroundClip = 'padding-box, border-box';
-          }
+          const finalMood = moods[moods.length - 1] || 'neutral';
+          const moodColor = MOOD_COLORS[finalMood] || '#9ca3af';
+          
+          cell.style.borderColor = moodColor;
+          cell.style.border = `2px solid ${moodColor}`;
+          cell.style.backgroundImage = 'none';
+          cell.style.backgroundOrigin = '';
+          cell.style.backgroundClip = '';
         }
       }
     };

@@ -35,6 +35,7 @@ let history = [], interruptions = 0, currentIntention = '', currentTags = [];
 let activeSounds = { rain: false, space: false, fire: false, binaural: false };
 let rainSynth = null, spaceSynth = null, fireSynth = null, binauralSynth = null;
 let audioCtx = null;
+let mainFilterNode = null;
 
 // Expose internal state variables to window for other scripts (e.g. features.js)
 Object.defineProperty(window, 'isFocus', { get: () => isFocus, set: (v) => { isFocus = v; } });
@@ -154,9 +155,30 @@ const dom = {
  * AUDIO ENGINE
  * ============================================================ */
 function getCtx() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    try {
+      mainFilterNode = audioCtx.createBiquadFilter();
+      mainFilterNode.type = 'lowpass';
+      // Start wide open (bypass muffle)
+      mainFilterNode.frequency.setValueAtTime(20000, audioCtx.currentTime);
+      mainFilterNode.connect(audioCtx.destination);
+    } catch(e) {
+      console.warn("Failed to initialize main muffle filter:", e);
+    }
+  }
   if (audioCtx.state === 'suspended') audioCtx.resume();
   return audioCtx;
+}
+
+function updateFilterMode() {
+  if (!audioCtx || !mainFilterNode) return;
+  const targetFreq = isRunning ? 20000 : 350; // 20kHz when running, 350Hz when paused
+  try {
+    mainFilterNode.frequency.exponentialRampToValueAtTime(targetFreq, audioCtx.currentTime + 0.6);
+  } catch (e) {
+    mainFilterNode.frequency.setValueAtTime(targetFreq, audioCtx.currentTime);
+  }
 }
 
 function playTone(freq, dur, type = 'sine', vol = 0.38) {
@@ -200,7 +222,7 @@ function createRainSynth(ctx, vol) {
   lfo.connect(lfoG); lfoG.connect(bp.frequency); lfo.start();
 
   noise.connect(bp); bp.connect(hp); hp.connect(ls); ls.connect(master);
-  master.connect(ctx.destination); noise.start();
+  master.connect(mainFilterNode || ctx.destination); noise.start();
 
   return {
     setVolume(v) { master.gain.linearRampToValueAtTime(v, ctx.currentTime + 0.4); },
@@ -221,7 +243,7 @@ function createSpaceSynth(ctx, vol) {
   const fb = ctx.createGain(); fb.gain.value = 0.42;
   const dlpf = ctx.createBiquadFilter(); dlpf.type = 'lowpass'; dlpf.frequency.value = 900;
   delay.connect(dlpf); dlpf.connect(fb); fb.connect(delay);
-  delay.connect(ctx.destination);
+  delay.connect(mainFilterNode || ctx.destination);
 
   const layers = [
     { f:55,    t:'sine',     lr:0.04, ld:0.5, ar:0.06 },
@@ -244,7 +266,7 @@ function createSpaceSynth(ctx, vol) {
     osc.start(ctx.currentTime + i*0.2);
     oscs.push({ osc, pl, al });
   });
-  master.connect(ctx.destination);
+  master.connect(mainFilterNode || ctx.destination);
 
   return {
     setVolume(v) { master.gain.linearRampToValueAtTime(v, ctx.currentTime + 0.5); },
@@ -283,7 +305,7 @@ function createFireplaceSynth(ctx, vol) {
   const master = ctx.createGain();
   master.gain.setValueAtTime(0, ctx.currentTime);
   master.gain.linearRampToValueAtTime(vol, ctx.currentTime + 2.5);
-  rumbleGain.connect(master); master.connect(ctx.destination);
+  rumbleGain.connect(master); master.connect(mainFilterNode || ctx.destination);
   rumbleSource.start(); rumbleLFO.start();
 
   let crackleTimeout = setTimeout(scheduleCrackle, 50);
@@ -386,7 +408,7 @@ function createBinauralSynth(ctx, beatFreq, vol) {
   noiseGain.gain.value = 0.25;
   noise.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(master);
 
-  master.connect(ctx.destination);
+  master.connect(mainFilterNode || ctx.destination);
   oscL.start(); oscR.start(); oscSub.start(); noise.start();
 
   return {
@@ -399,8 +421,13 @@ function createBinauralSynth(ctx, beatFreq, vol) {
 }
 
 function ambientVol(track) {
-  const trackVol = parseInt($(`slider-${track}`).value) / 100;
-  const masterVol = parseInt(dom.volumeSlider.value) / 100;
+  const sliderEl = $(`slider-${track}`);
+  const trackVal = sliderEl ? parseInt(sliderEl.value) : 40;
+  const masterVal = dom.volumeSlider ? parseInt(dom.volumeSlider.value) : 50;
+  
+  const trackVol = isNaN(trackVal) ? 0.4 : (trackVal / 100);
+  const masterVol = isNaN(masterVal) ? 0.5 : (masterVal / 100);
+  
   return trackVol * masterVol * 0.38;
 }
 
@@ -584,7 +611,8 @@ function startBreathingMode() {
       }
     }
     
-    dom.ringProgress.style.strokeDashoffset = CIRCUMFERENCE * (remainingBreathSeconds / 64);
+    const offset = CIRCUMFERENCE * (remainingBreathSeconds / 64);
+    dom.ringProgress.style.strokeDashoffset = offset;
     
     remainingBreathSeconds--;
     if (remainingBreathSeconds < 0) {
@@ -708,6 +736,39 @@ function initShieldCanvas() {
     }
     shieldCtx.fillStyle = grad;
     shieldCtx.fillRect(0, 0, shieldCanvas.width, shieldCanvas.height);
+    
+    // Draw constellation proximity lines
+    for (let i = 0; i < particles.length; i++) {
+      for (let j = i + 1; j < particles.length; j++) {
+        const p1 = particles[i];
+        const p2 = particles[j];
+        const dx = p1.x - p2.x;
+        const dy = p1.y - p2.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < 100) {
+          shieldCtx.beginPath();
+          shieldCtx.moveTo(p1.x, p1.y);
+          shieldCtx.lineTo(p2.x, p2.y);
+          
+          const opacity = ((100 - dist) / 100) * ((p1.alpha + p2.alpha) / 2) * 0.22;
+          
+          if (currentTheme === 'forge') {
+            shieldCtx.strokeStyle = `rgba(251, 146, 60, ${opacity})`;
+          } else if (currentTheme === 'ocean') {
+            shieldCtx.strokeStyle = `rgba(56, 189, 248, ${opacity})`;
+          } else if (currentTheme === 'light') {
+            shieldCtx.strokeStyle = `rgba(0, 0, 0, ${opacity * 0.4})`;
+          } else if (currentTheme === 'dark') {
+            shieldCtx.strokeStyle = `rgba(255, 255, 255, ${opacity})`;
+          } else {
+            shieldCtx.strokeStyle = `rgba(192, 132, 252, ${opacity})`;
+          }
+          shieldCtx.lineWidth = 0.8;
+          shieldCtx.stroke();
+        }
+      }
+    }
     
     // Particles update
     particles.forEach(p => {
@@ -1157,7 +1218,8 @@ function fmt(secs) {
 function updateDisplay() {
   dom.timerDisplay.textContent = fmt(remaining);
   document.title = `${fmt(remaining)} · ${isFocus ? 'Focus' : 'Break'} — Zenclox`;
-  dom.ringProgress.style.strokeDashoffset = CIRCUMFERENCE * (1 - remaining / totalSecs);
+  const offset = CIRCUMFERENCE * (1 - remaining / totalSecs);
+  dom.ringProgress.style.strokeDashoffset = offset;
   updateFavicon();
   saveTimerState();
   if (window.updateZenColors) window.updateZenColors();
@@ -1197,6 +1259,7 @@ function startTimer() {
   if (isRunning) return;
   isRunning = true; sessionFresh = false;
   resumeAmbientIfNeeded();
+  updateFilterMode();
   dom.iconPlay.style.display  = 'none';
   dom.iconPause.style.display = '';
   dom.timerDisplay.classList.remove('paused');
@@ -1239,6 +1302,7 @@ function startTimer() {
 function pauseTimer() {
   if (!isRunning) return;
   isRunning = false;
+  updateFilterMode();
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   startTime = null;
   dom.iconPlay.style.display  = '';
@@ -1438,6 +1502,7 @@ function logInterruption() {
 
 /* Cycle end */
 function onCycleEnd() {
+  updateFilterMode();
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   dom.modeDot.classList.remove('pulsing');
   dom.interruptionRow.hidden = true;
@@ -1518,6 +1583,9 @@ function addHistoryEntry(durSecs) {
     sessionNum 
   });
   saveHistory(); renderHistory();
+  if (window.ZenBgSystem && window.ZenBgSystem.addCompletedSessionStar) {
+    window.ZenBgSystem.addCompletedSessionStar();
+  }
   updateDailyVelocity();
   renderAnalytics();
 }
@@ -1712,11 +1780,12 @@ function sendNotif(title, body) {
  * SETTINGS, PRESETS, STEPPERS
  * ============================================================ */
 function initPresets() {
-  const chips = document.querySelectorAll('.preset-chip');
+  const chips = document.querySelectorAll('.presets .preset-chip');
   function markActive(f, b) { chips.forEach(c => c.classList.toggle('active', +c.dataset.focus===f && +c.dataset.break===b)); }
   chips.forEach(chip => {
     chip.addEventListener('click', () => {
       const f = +chip.dataset.focus, b = +chip.dataset.break;
+      if (isNaN(f) || isNaN(b)) return;
       dom.focusVal.textContent = f; dom.breakVal.textContent = b;
       if (isRunning) pauseTimer();
       focusMins = f; breakMins = b;
@@ -1730,7 +1799,7 @@ function initPresets() {
     if (isRunning) pauseTimer();
     focusMins = f; breakMins = b;
     setMode(isFocus);
-    document.querySelectorAll('.preset-chip').forEach(c => c.classList.toggle('active', +c.dataset.focus===f && +c.dataset.break===b));
+    document.querySelectorAll('.presets .preset-chip').forEach(c => c.classList.toggle('active', +c.dataset.focus===f && +c.dataset.break===b));
     dom.settingsPanel.hidden = true;
     dom.settingsBtn.setAttribute('aria-expanded','false');
   });
@@ -1756,10 +1825,16 @@ function initSteppers() {
  * EVENT LISTENERS
  * ============================================================ */
 function initEvents() {
-  dom.settingsBtn.addEventListener('click', () => {
+  dom.settingsBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
     const open = !dom.settingsPanel.hidden;
     dom.settingsPanel.hidden = open;
     dom.settingsBtn.setAttribute('aria-expanded', String(!open));
+
+    if (!open && dom.soundPopover && !dom.soundPopover.hidden) {
+      dom.soundPopover.hidden = true;
+      dom.soundToggleBtn.classList.remove('active');
+    }
   });
 
   dom.startBtn.addEventListener('click', handleStart);
@@ -1813,9 +1888,28 @@ function initEvents() {
     });
     
     document.addEventListener('click', (e) => {
-      if (!dom.soundPopover.hidden && !dom.soundPopover.contains(e.target) && !dom.soundToggleBtn.contains(e.target)) {
-        dom.soundPopover.hidden = true;
-        dom.soundToggleBtn.classList.remove('active');
+      if (!dom.soundPopover.hidden) {
+        // Only close if click is outside both popover and the toggle button
+        if (!dom.soundPopover.contains(e.target) && !dom.soundToggleBtn.contains(e.target)) {
+          dom.soundPopover.hidden = true;
+          dom.soundToggleBtn.classList.remove('active');
+        }
+      }
+      if (!dom.settingsPanel.hidden) {
+        // Only close if click is outside both settings panel and settings button
+        if (!dom.settingsPanel.contains(e.target) && !dom.settingsBtn.contains(e.target)) {
+          dom.settingsPanel.hidden = true;
+          dom.settingsBtn.setAttribute('aria-expanded', 'false');
+        }
+      }
+    });
+  } else {
+    document.addEventListener('click', (e) => {
+      if (!dom.settingsPanel.hidden) {
+        if (!dom.settingsPanel.contains(e.target) && !dom.settingsBtn.contains(e.target)) {
+          dom.settingsPanel.hidden = true;
+          dom.settingsBtn.setAttribute('aria-expanded', 'false');
+        }
       }
     });
   }
@@ -1896,6 +1990,87 @@ function initEvents() {
     }
   }));
 
+  // Ambient presets selector
+  const presetContainer = $('sound-presets-container');
+  if (presetContainer) {
+    presetContainer.addEventListener('click', (e) => {
+      const btn = e.target.closest('.sound-preset-chip');
+      if (!btn) return;
+      
+      const targets = {
+        rain: parseInt(btn.dataset.rain) || 0,
+        space: parseInt(btn.dataset.space) || 0,
+        fire: parseInt(btn.dataset.fire) || 0,
+        binaural: parseInt(btn.dataset.binaural) || 0
+      };
+      
+      Object.keys(targets).forEach(type => {
+        const val = targets[type];
+        const settingsSlider = $(`slider-${type}`);
+        const popoverSlider = $(`popover-slider-${type}`);
+        
+        if (settingsSlider) settingsSlider.value = val;
+        if (popoverSlider) popoverSlider.value = val;
+        
+        const isPlaying = activeSounds[type];
+        if (val > 0 && !isPlaying) {
+          startAmbientSound(type);
+        } else if (val === 0 && isPlaying) {
+          startAmbientSound(type);
+        } else if (val > 0 && isPlaying) {
+          const synth = type === 'rain' ? rainSynth : type === 'space' ? spaceSynth : type === 'fire' ? fireSynth : binauralSynth;
+          if (synth) synth.setVolume(ambientVol(type));
+        }
+      });
+      saveSoundPref();
+      updateSoundUI();
+    });
+  }
+
+  // Social Share & GitHub badge clipboard actions
+  const twitterBtn = $('share-twitter-btn');
+  const linkedinBtn = $('share-linkedin-btn');
+  const badgeInput = $('github-badge-code');
+  
+  if (twitterBtn) {
+    twitterBtn.addEventListener('click', () => {
+      const sessions = window.focusHistory || [];
+      const count = sessions.length;
+      let totalMins = 0;
+      let avgVel = 0;
+      sessions.forEach(s => {
+        totalMins += Math.floor(s.duration / 60);
+        avgVel += (s.velocity || 100);
+      });
+      avgVel = count > 0 ? Math.round(avgVel / count) : 100;
+      
+      const shareText = encodeURIComponent(`Locked in a deep work block on Zenclox! 🧬\n\n🔥 Total focused time: ${Math.floor(totalMins/60)}h ${totalMins%60}m\n⚡ Average Flow Score: ${avgVel}%\n\nBoost your productivity at zenclox.app #Zenclox #Pomodoro`);
+      window.open(`https://twitter.com/intent/tweet?text=${shareText}`, '_blank');
+    });
+  }
+  
+  if (linkedinBtn) {
+    linkedinBtn.addEventListener('click', () => {
+      const shareUrl = encodeURIComponent('https://zenclox.app');
+      window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${shareUrl}`, '_blank');
+    });
+  }
+  
+  if (badgeInput) {
+    badgeInput.addEventListener('click', () => {
+      badgeInput.select();
+      navigator.clipboard.writeText(badgeInput.value).then(() => {
+        const toast = $('badge-copy-toast');
+        if (toast) {
+          toast.style.opacity = '1';
+          setTimeout(() => { toast.style.opacity = '0'; }, 2000);
+        }
+      }).catch(err => {
+        console.warn("Clipboard write failed:", err);
+      });
+    });
+  }
+
   // Keyboard shortcuts
   document.addEventListener('keydown', e => {
     const modalOpen = !dom.intentionOverlay.hidden || !dom.reflOverlay.hidden;
@@ -1910,10 +2085,58 @@ function initEvents() {
       case 'Digit2':  e.preventDefault(); document.querySelector('.preset-chip[data-focus="50"]')?.click(); break;
       case 'Digit3':  e.preventDefault(); document.querySelector('.preset-chip[data-focus="90"]')?.click(); break;
       case 'Escape':
-        if (!dom.settingsPanel.hidden) { dom.settingsPanel.hidden=true; dom.settingsBtn.setAttribute('aria-expanded','false'); dom.settingsBtn.focus(); }
+        let exitedAny = false;
+        if (!dom.settingsPanel.hidden) {
+          dom.settingsPanel.hidden = true;
+          dom.settingsBtn.setAttribute('aria-expanded', 'false');
+          dom.settingsBtn.focus();
+          exitedAny = true;
+        }
+        if (dom.soundPopover && !dom.soundPopover.hidden) {
+          dom.soundPopover.hidden = true;
+          dom.soundToggleBtn.classList.remove('active');
+          exitedAny = true;
+        }
+        if (isFlowShield) {
+          toggleFlowShield();
+          exitedAny = true;
+        }
+        if (document.body.classList.contains('zen-mode-active')) {
+          const zenToggleBtn = $('zen-toggle-btn');
+          if (zenToggleBtn) {
+            zenToggleBtn.click();
+          }
+          exitedAny = true;
+        }
+        if (isBreathing) {
+          cancelBreathingMode();
+          exitedAny = true;
+        }
+        if (exitedAny) {
+          e.preventDefault();
+        }
         break;
     }
   });
+
+  // Focus Back Button click listener
+  const focusBackBtn = $('focus-back-btn');
+  if (focusBackBtn) {
+    focusBackBtn.addEventListener('click', () => {
+      if (isFlowShield) {
+        toggleFlowShield();
+      }
+      if (document.body.classList.contains('zen-mode-active')) {
+        const zenToggleBtn = $('zen-toggle-btn');
+        if (zenToggleBtn) {
+          zenToggleBtn.click();
+        }
+      }
+      if (isBreathing) {
+        cancelBreathingMode();
+      }
+    });
+  }
 }
 
 /* ============================================================
@@ -1959,7 +2182,7 @@ function init() {
   dom.modeLabel.textContent = isFocus ? 'Focus' : 'Break';
   dom.focusVal.textContent  = focusMins;
   dom.breakVal.textContent  = breakMins;
-  document.querySelectorAll('.preset-chip').forEach(c => c.classList.toggle('active', +c.dataset.focus===focusMins && +c.dataset.break===breakMins));
+  document.querySelectorAll('.presets .preset-chip').forEach(c => c.classList.toggle('active', +c.dataset.focus===focusMins && +c.dataset.break===breakMins));
 
   updateDisplay();
 
