@@ -1,0 +1,13 @@
+{
+  "name": "Zenclox — Flow Timer",
+  "short_name": "Zenclox",
+  "description": "A premium Pomodoro timer with ambient soundscapes, session intentions, and weekly heatmap.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0f0f14",
+  "theme_color": "#0f0f14",
+  "icons": [
+    { "src": "favicon.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "favicon.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

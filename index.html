@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="void">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zenclox — Flow Timer</title>
+  <meta name="description" content="A premium Pomodoro timer with ambient soundscapes, session intentions, flow quality tracking, and weekly heatmap." />
+  <meta name="theme-color" content="#0f0f14" id="theme-meta" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" id="favicon-link" href="favicon.png" type="image/png" />
+</head>
+<body>
+
+  <canvas id="flow-shield-canvas" aria-hidden="true"></canvas>
+
+  <div class="bg-blob blob-1" aria-hidden="true"></div>
+  <div class="bg-blob blob-2" aria-hidden="true"></div>
+  <div class="bg-blob blob-3" aria-hidden="true"></div>
+
+  <div class="app-shell">
+
+    <!-- HEADER -->
+    <header class="app-header">
+      <div class="logo">
+        <span class="logo-dot" id="mode-dot" aria-hidden="true"></span>
+        <span class="logo-text">Zenclox</span>
+        <div class="streak-badge" id="streak-badge" hidden>
+          <span aria-hidden="true">🔥</span>
+          <span id="streak-count">0</span>
+          <span class="streak-label">days</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="theme-switcher" role="group" aria-label="Color theme">
+          <button class="theme-dot theme-void"  data-theme="void"  title="Void"  aria-label="Void theme"></button>
+          <button class="theme-dot theme-dark"  data-theme="dark"  title="Dark Mode"  aria-label="Dark theme"></button>
+          <button class="theme-dot theme-ocean" data-theme="ocean" title="Ocean" aria-label="Ocean theme"></button>
+          <button class="theme-dot theme-forge" data-theme="forge" title="Forge" aria-label="Forge theme"></button>
+          <button class="theme-dot theme-light" data-theme="light" title="Light Mode" aria-label="Light theme"></button>
+        </div>
+        <button class="zen-btn" id="zen-toggle-btn" aria-label="Toggle Zen Mode" aria-pressed="false" title="Zen Mode (Z)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10"/>
+          </svg>
+        </button>
+        <button class="shield-btn" id="shield-toggle-btn" aria-label="Toggle Flow Shield" aria-pressed="false" title="Cinema Mode (F)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+        </button>
+        <button class="palette-btn" id="palette-toggle-btn" aria-label="Open Command Palette" title="Command Palette (Ctrl+K)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </button>
+        <button class="sound-toggle-btn" id="sound-toggle-btn" aria-label="Toggle sound mixer popover" title="Ambient Mixer">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+            <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+          </svg>
+        </button>
+        <button class="settings-btn" id="settings-toggle-btn" aria-label="Open settings" aria-expanded="false" aria-controls="settings-panel">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+        <div class="sound-popover" id="sound-popover" hidden>
+          <div class="sound-popover-inner">
+            <h4 class="popover-title">Ambient Mixer</h4>
+            <div class="popover-rows">
+              <div class="popover-row">
+                <button class="popover-card" id="popover-sound-rain" aria-pressed="false">
+                  <span class="mixer-icon">🌧️</span>
+                  <span>Rain</span>
+                </button>
+                <input class="popover-slider" id="popover-slider-rain" type="range" min="0" max="100" value="40" aria-label="Rain volume" />
+              </div>
+              <div class="popover-row">
+                <button class="popover-card" id="popover-sound-space" aria-pressed="false">
+                  <span class="mixer-icon">🌌</span>
+                  <span>Space</span>
+                </button>
+                <input class="popover-slider" id="popover-slider-space" type="range" min="0" max="100" value="40" aria-label="Space volume" />
+              </div>
+              <div class="popover-row">
+                <button class="popover-card" id="popover-sound-fire" aria-pressed="false">
+                  <span class="mixer-icon">🔥</span>
+                  <span>Fire</span>
+                </button>
+                <input class="popover-slider" id="popover-slider-fire" type="range" min="0" max="100" value="40" aria-label="Fire volume" />
+              </div>
+              <div class="popover-row">
+                <button class="popover-card" id="popover-sound-binaural" aria-pressed="false">
+                  <span class="mixer-icon">🎧</span>
+                  <span>Binaural</span>
+                </button>
+                <input class="popover-slider" id="popover-slider-binaural" type="range" min="0" max="100" value="40" aria-label="Binaural volume" />
+              </div>
+            </div>
+            <div class="popover-volume-row">
+              <span class="popover-volume-label">Master</span>
+              <input class="popover-volume-slider" id="popover-volume-slider" type="range" min="0" max="100" value="50" aria-label="Master volume" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- SETTINGS PANEL -->
+    <div class="settings-panel" id="settings-panel" role="region" aria-label="Timer settings" hidden>
+      <div class="settings-inner">
+        <div class="settings-col">
+          <h2 class="settings-section-title">Timer &amp; Prep</h2>
+          <div class="presets" role="group" aria-label="Quick presets">
+            <button class="preset-chip" data-focus="25" data-break="5">25/5 <span class="preset-tag">classic</span></button>
+            <button class="preset-chip" data-focus="50" data-break="10">50/10 <span class="preset-tag">deep</span></button>
+            <button class="preset-chip" data-focus="90" data-break="20">90/20 <span class="preset-tag">ultra</span></button>
+          </div>
+          <div class="settings-grid">
+            <div class="setting-group">
+              <span class="setting-label" id="focus-label">Focus</span>
+              <div class="stepper" role="group" aria-labelledby="focus-label">
+                <button class="stepper-btn" id="focus-minus" aria-label="Decrease focus">−</button>
+                <div class="stepper-value"><span id="focus-val">25</span><span class="stepper-unit">min</span></div>
+                <button class="stepper-btn" id="focus-plus" aria-label="Increase focus">+</button>
+              </div>
+            </div>
+            <div class="setting-group">
+              <span class="setting-label" id="break-label">Break</span>
+              <div class="stepper" role="group" aria-labelledby="break-label">
+                <button class="stepper-btn" id="break-minus" aria-label="Decrease break">−</button>
+                <div class="stepper-value"><span id="break-val">5</span><span class="stepper-unit">min</span></div>
+                <button class="stepper-btn" id="break-plus" aria-label="Increase break">+</button>
+              </div>
+            </div>
+          </div>
+          <div class="toggle-row">
+            <label class="toggle-label" for="breath-toggle">
+              <input type="checkbox" id="breath-toggle" class="custom-toggle" />
+              <span class="toggle-text">Box Breathing Prep (1 min)</span>
+            </label>
+          </div>
+          <button class="notif-btn" id="notif-btn" type="button" style="margin-top: 10px;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span id="notif-text">Enable Notifications</span>
+          </button>
+        </div>
+
+        <div class="settings-divider"></div>
+
+        <div class="settings-col">
+          <h2 class="settings-section-title">Ambient Soundscape Mixer</h2>
+          <div class="sound-mixer">
+            <div class="mixer-row" id="mixer-rain">
+              <button class="mixer-card" id="sound-rain" aria-pressed="false" aria-label="Toggle Rain">
+                <span class="mixer-icon">🌧️</span>
+                <span class="mixer-name">Rain</span>
+              </button>
+              <input class="mixer-slider" id="slider-rain" type="range" min="0" max="100" value="40" aria-label="Rain volume" />
+            </div>
+            <div class="mixer-row" id="mixer-space">
+              <button class="mixer-card" id="sound-space" aria-pressed="false" aria-label="Toggle Deep Space">
+                <span class="mixer-icon">🌌</span>
+                <span class="mixer-name">Space</span>
+              </button>
+              <input class="mixer-slider" id="slider-space" type="range" min="0" max="100" value="40" aria-label="Space volume" />
+            </div>
+            <div class="mixer-row" id="mixer-fire">
+              <button class="mixer-card" id="sound-fire" aria-pressed="false" aria-label="Toggle Fireplace">
+                <span class="mixer-icon">🔥</span>
+                <span class="mixer-name">Fire</span>
+              </button>
+              <input class="mixer-slider" id="slider-fire" type="range" min="0" max="100" value="40" aria-label="Fire volume" />
+            </div>
+            <div class="mixer-row" id="mixer-binaural">
+              <button class="mixer-card" id="sound-binaural" aria-pressed="false" aria-label="Toggle Binaural Beats">
+                <span class="mixer-icon">🎧</span>
+                <span class="mixer-name">Binaural</span>
+              </button>
+              <input class="mixer-slider" id="slider-binaural" type="range" min="0" max="100" value="40" aria-label="Binaural volume" />
+            </div>
+          </div>
+          <div class="volume-row" style="margin-bottom: 10px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/></svg>
+            <span class="volume-label">Master Volume</span>
+            <input class="volume-slider" id="volume-slider" type="range" min="0" max="100" value="50" aria-label="Master volume" />
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+          </div>
+          <button class="apply-btn" id="apply-settings-btn">Apply Settings</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN TIMER -->
+    <main class="timer-main" aria-label="Pomodoro timer">
+      <div class="mode-label" id="mode-label" aria-live="polite" aria-atomic="true">Focus</div>
+
+      <div class="timer-ring-wrap" role="timer" aria-label="Time remaining">
+        <svg class="timer-ring" viewBox="0 0 300 300" aria-hidden="true">
+          <circle class="ring-track" cx="150" cy="150" r="130" />
+          <circle class="ring-progress" id="ring-progress" cx="150" cy="150" r="130"
+            stroke-dasharray="816.81" stroke-dashoffset="0"
+            transform="rotate(-90 150 150)" />
+        </svg>
+        <div class="timer-display">
+          <div class="timer-time" id="timer-display" aria-label="Time remaining">25:00</div>
+          <div class="timer-sub" id="timer-sub">Ready to focus</div>
+          <div id="quote-display" class="quote-display" style="display: none;"></div>
+        </div>
+      </div>
+
+      <!-- Smart Break Suggestion -->
+      <div class="break-suggestion-card" id="break-suggestion-card" hidden>
+        <span class="suggestion-icon">💡</span>
+        <div class="suggestion-content">
+          <span class="suggestion-title">Smart Break Suggestion</span>
+          <span class="suggestion-text" id="break-suggestion-text">Stretch your legs and take a deep breath.</span>
+        </div>
+      </div>
+
+      <!-- Interruption tracker (shown during focus) -->
+      <div class="interruption-row" id="interruption-row" hidden>
+        <button class="interrupt-btn" id="interrupt-btn" aria-label="Log distraction (I)">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          <span>Distraction</span>
+          <span class="interrupt-count" id="interrupt-count" hidden>0</span>
+        </button>
+      </div>
+
+      <div class="controls" role="group" aria-label="Timer controls">
+        <button class="ctrl-btn ctrl-reset" id="reset-btn" aria-label="Reset timer" title="Reset (R)">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.47"/>
+          </svg>
+        </button>
+        <button class="ctrl-btn ctrl-primary" id="start-btn" aria-label="Start timer">
+          <svg class="icon-play" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          <svg class="icon-pause" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="display:none">
+            <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+          </svg>
+        </button>
+        <button class="ctrl-btn ctrl-skip" id="skip-btn" aria-label="Skip to next session" title="Skip (S)">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="velocity-score" id="velocity-score" aria-live="polite"></div>
+
+      <p class="kbd-hint">
+        <kbd>Space</kbd> play/pause &nbsp;·&nbsp; <kbd>R</kbd> reset &nbsp;·&nbsp;
+        <kbd>S</kbd> skip &nbsp;·&nbsp; <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> presets &nbsp;·&nbsp; <kbd>I</kbd> distraction
+      </p>
+      <!-- ZEN ROCK GARDEN -->
+      <div class="zen-rock-garden" id="zen-rock-garden" hidden>
+        <div class="zen-pebble" data-index="0" title="Grounding Stone" style="--rot: -12deg; width: 34px; height: 20px;"></div>
+        <div class="zen-pebble" data-index="1" title="Reflection Stone" style="--rot: 5deg; width: 28px; height: 24px;"></div>
+        <div class="zen-pebble" data-index="2" title="Presence Stone" style="--rot: -2deg; width: 32px; height: 21px;"></div>
+        <div class="zen-pebble-quote" id="zen-pebble-quote"></div>
+      </div>
+    </main>
+
+    <!-- SESSION FLASH -->
+    <div class="session-flash" id="session-flash" aria-live="assertive" aria-atomic="true" hidden>
+      <div class="flash-icon-wrap" id="flash-icon-wrap" aria-hidden="true"></div>
+      <div class="flash-text" id="flash-text">Focus session complete!</div>
+    </div>
+
+    <!-- STATS GRID -->
+    <div class="stats-grid">
+      <div class="stats-col-1">
+        <!-- TODAY'S SESSIONS -->
+        <section class="history-section" aria-labelledby="history-heading">
+          <div class="history-header">
+            <div class="history-header-left" style="flex-direction: row; align-items: center; gap: 8px;">
+              <h2 class="history-title" id="history-heading">Sessions</h2>
+              <span class="history-count" id="history-count">0 sessions</span>
+              <button class="analytics-toggle-btn" id="history-view-toggle" type="button" style="padding: 2px 8px; font-size: 0.65rem;">🧬 DNA View</button>
+            </div>
+            <button class="export-btn" id="export-btn" aria-label="Export sessions as CSV">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Export
+            </button>
+          </div>
+          
+          <!-- DNA Strand View Container -->
+          <div class="dna-strand-view" id="dna-strand-view" style="display: none; position: relative;">
+            <canvas id="dna-canvas" style="display: block; width: 100%; height: 260px;"></canvas>
+            <div id="dna-tooltip" class="dna-tooltip" style="display: none; position: absolute; pointer-events: none; z-index: 10;"></div>
+          </div>
+
+          <ul class="history-list" id="history-list" role="list">
+            <li class="history-empty" id="history-empty">
+              <svg viewBox="0 0 56 56" width="42" height="42" aria-hidden="true">
+                <circle cx="28" cy="28" r="25" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.22"/>
+                <circle cx="28" cy="28" r="4" fill="currentColor" opacity="0.28"/>
+              </svg>
+              <span>No sessions yet — start your first one!</span>
+            </li>
+          </ul>
+        </section>
+
+        <!-- ANALYTICS DASHBOARD -->
+        <section class="analytics-section" id="analytics-section" aria-labelledby="analytics-heading" hidden>
+          <div class="analytics-header">
+            <h2 class="analytics-title" id="analytics-heading">Flow Analytics</h2>
+            <div class="analytics-actions" style="display: flex; gap: 8px;">
+              <button class="analytics-toggle-btn" id="analytics-toggle-btn" type="button">Show Velocity</button>
+              <button class="analytics-toggle-btn" id="ai-report-btn" type="button" style="background: color-mix(in srgb, var(--focus) 10%, transparent); color: var(--focus); border-color: var(--focus);">🔮 AI Report</button>
+            </div>
+          </div>
+          <div class="analytics-body">
+            <!-- SVG Donut Chart container -->
+            <div id="analytics-tags-view" class="analytics-chart-container">
+              <div class="chart-wrapper">
+                <svg id="tags-donut-chart" viewBox="0 0 200 200" width="130" height="130">
+                  <circle cx="100" cy="100" r="70" fill="none" stroke="var(--border)" stroke-width="16" />
+                </svg>
+                <div class="chart-center-text">
+                  <span class="chart-center-val" id="chart-center-val">0</span>
+                  <span class="chart-center-lbl">Sessions</span>
+                </div>
+              </div>
+              <div id="tags-legend" class="chart-legend"></div>
+            </div>
+            <!-- SVG Line Chart container -->
+            <div id="analytics-velocity-view" class="analytics-chart-container" style="display:none">
+              <svg id="velocity-trend-chart" viewBox="0 0 340 120" width="100%" height="120" preserveAspectRatio="none">
+                <!-- Drawn dynamically -->
+              </svg>
+              <div id="velocity-legend" class="chart-legend-velocity"></div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="stats-col-2">
+        <!-- AI FOCUS FORECAST & PREDICTOR -->
+        <section class="ai-predictor-section" id="ai-predictor-section" aria-labelledby="predictor-heading">
+          <div class="predictor-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h2 class="predictor-title" id="predictor-heading" style="font-size: 0.78rem; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted);">🔮 Focus Forecast</h2>
+            <span class="predictor-badge" style="font-size: 0.65rem; color: var(--focus); background: color-mix(in srgb, var(--focus) 10%, transparent); padding: 2px 8px; border-radius: 100px; font-weight: 600;">Circadian AI</span>
+          </div>
+          <div class="predictor-body" style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 16px 20px;">
+            <canvas id="energy-curve-canvas" style="display: block; width: 100%; height: 90px;"></canvas>
+            <p class="predictor-insight" id="predictor-insight-text" style="font-size: 0.74rem; color: var(--muted); margin-top: 10px; line-height: 1.4; border-top: 1px solid var(--border); padding-top: 8px;">Analyzing your circadian rhythm and focus velocity...</p>
+          </div>
+        </section>
+      </div>
+
+      <div class="stats-full-width">
+        <!-- 7-DAY HEATMAP -->
+        <section class="heatmap-section" aria-labelledby="heatmap-heading">
+          <div class="heatmap-header">
+            <h2 class="heatmap-title" id="heatmap-heading">7-Day Activity</h2>
+            <div class="heatmap-legend" aria-hidden="true">
+              <span class="legend-dot legend-empty"></span><span class="legend-text">0</span>
+              <span class="legend-dot legend-full"></span><span class="legend-text">5+</span>
+            </div>
+          </div>
+          <div class="heatmap-grid" id="heatmap-grid"></div>
+        </section>
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="app-footer">
+      <div class="footer-top">
+        <span>Found any issues or have suggestions? <a href="mailto:devixaweb@gmail.com" class="footer-email">devixaweb@gmail.com</a></span>
+      </div>
+      <div class="footer-bottom">
+        <div class="footer-left">
+          Made by <span class="author-name">Tayyab</span>
+        </div>
+        <div class="footer-right">
+          <a href="https://github.com/mtayyab-10" target="_blank" rel="noopener noreferrer" class="social-btn github-btn" aria-label="GitHub">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+              <defs>
+                <mask id="github-mask">
+                  <rect width="24" height="24" fill="white" />
+                  <path fill="black" transform="matrix(0.65 0 0 0.65 4.2 4.2)" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.577.688.479C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"/>
+                </mask>
+              </defs>
+              <rect x="2" y="2" width="20" height="20" rx="4" mask="url(#github-mask)" />
+            </svg>
+          </a>
+          <a href="https://www.linkedin.com/in/muhammad-tayyab10" target="_blank" rel="noopener noreferrer" class="social-btn linkedin-btn" aria-label="LinkedIn">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+              <defs>
+                <mask id="linkedin-mask">
+                  <rect width="24" height="24" fill="white" />
+                  <g transform="matrix(0.65 0 0 0.65 3.0 4.0)">
+                    <rect x="5.6" y="10.2" width="3.6" height="10.2" fill="black" />
+                    <circle cx="7.4" cy="6.2" r="2" fill="black" />
+                    <path fill="black" d="M11.8 10.2v10.2h3.6V15c0-2.7 3.2-2.9 3.2 0v5.4h3.6v-6c0-4.7-5.4-4.5-6.8-2v-2.2h-3.6z" />
+                  </g>
+                </mask>
+              </defs>
+              <rect x="2" y="2" width="20" height="20" rx="4" mask="url(#linkedin-mask)" />
+            </svg>
+          </a>
+        </div>
+      </div>
+    </footer>
+
+  </div><!-- /app-shell -->
+
+  <!-- INTENTION MODAL -->
+  <div class="modal-overlay" id="intention-overlay" role="dialog" aria-modal="true" aria-labelledby="intention-title" hidden>
+    <div class="modal-card">
+      <div class="modal-emblem">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
+        </svg>
+      </div>
+      <h3 class="modal-title" id="intention-title">Set your intention</h3>
+      <p class="modal-sub">What will you accomplish this session?</p>
+      <input class="modal-input" id="intention-input" type="text" placeholder="e.g. Finish the auth module…" maxlength="100" autocomplete="off" />
+      <input class="modal-input" id="intention-tags-input" type="text" placeholder="Tags (e.g. coding, study, work)" maxlength="50" autocomplete="off" style="margin-top: -4px;" />
+      <div id="intention-recent-tags" style="display: flex; flex-wrap: wrap; gap: 6px; width: 100%; margin-top: -6px; justify-content: flex-start;"></div>
+      <button class="modal-primary-btn" id="intention-submit-btn" style="margin-top: 2px;">Start Focus Session →</button>
+      <button class="modal-ghost-btn" id="intention-skip-btn">Skip intention</button>
+    </div>
+  </div>
+
+  <!-- REFLECTION MODAL -->
+  <div class="modal-overlay" id="reflection-overlay" role="dialog" aria-modal="true" aria-labelledby="reflection-title" hidden>
+    <div class="modal-card">
+      <div class="modal-emblem modal-emblem-success">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+      </div>
+      <h3 class="modal-title" id="reflection-title">Session complete!</h3>
+      <p class="modal-sub">Did you accomplish your goal?</p>
+      <p class="reflection-goal-text" id="reflection-goal"></p>
+      
+      <p class="modal-sub" style="margin-top: 10px;">Select your session mood:</p>
+      <div class="mood-selector-row" id="mood-selector-row" role="group" style="display: flex; gap: 12px; justify-content: center; margin-bottom: 12px;">
+        <button class="mood-btn" data-mood="struggling" title="Struggling" type="button" style="font-size: 1.5rem; background: none; border: 2px solid transparent; border-radius: 50%; padding: 4px; cursor: pointer; transition: transform 0.2s, border-color 0.2s;">😤</button>
+        <button class="mood-btn" data-mood="neutral" title="Neutral" type="button" style="font-size: 1.5rem; background: none; border: 2px solid transparent; border-radius: 50%; padding: 4px; cursor: pointer; transition: transform 0.2s, border-color 0.2s;">😐</button>
+        <button class="mood-btn selected" data-mood="good" title="Good" type="button" style="font-size: 1.5rem; background: none; border: 2px solid #38bdf8; border-radius: 50%; padding: 4px; cursor: pointer; transition: transform 0.2s, border-color 0.2s; transform: scale(1.15);">😊</button>
+        <button class="mood-btn" data-mood="fire" title="On Fire" type="button" style="font-size: 1.5rem; background: none; border: 2px solid transparent; border-radius: 50%; padding: 4px; cursor: pointer; transition: transform 0.2s, border-color 0.2s;">🔥</button>
+      </div>
+
+      <div class="reflection-btns" role="group">
+        <button class="reflect-btn reflect-yes" id="reflect-yes">✓ Yes</button>
+        <button class="reflect-btn reflect-partial" id="reflect-partial">∼ Partial</button>
+        <button class="reflect-btn reflect-no" id="reflect-no">✕ No</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- BADGE TOAST -->
+  <div class="badge-toast" id="badge-toast" role="status" aria-live="polite" hidden>
+    <span class="badge-toast-icon" id="badge-toast-icon" aria-hidden="true">🌱</span>
+    <div class="badge-toast-body">
+      <span class="badge-toast-label">Achievement Unlocked</span>
+      <span class="badge-toast-name" id="badge-toast-name">Growing Streak</span>
+    </div>
+    <button class="badge-toast-close" id="badge-toast-close" aria-label="Dismiss">×</button>
+  </div>
+
+  <!-- COMMAND PALETTE -->
+  <div class="modal-overlay" id="command-palette-overlay" role="dialog" aria-modal="true" aria-labelledby="palette-title" hidden style="background: rgba(0,0,0,0.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); display: flex; align-items: flex-start; padding-top: 10vh;">
+    <div class="modal-card" style="max-width: 500px; width: 100%; border-radius: 14px; padding: 16px; border-color: var(--focus); box-shadow: 0 16px 40px rgba(0,0,0,0.5);">
+      <h3 id="palette-title" class="sr-only" style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); border: 0;">Command Palette</h3>
+      <input type="text" id="command-palette-input" placeholder="Search commands... (e.g. 'theme void', 'zen', 'play')" style="width: 100%; padding: 12px 16px; font-size: 0.95rem; font-family: var(--sans); border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); outline: none; margin-bottom: 12px;" />
+      <div id="command-palette-list" style="width: 100%; max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;">
+        <!-- Commands rendered dynamically -->
+      </div>
+      <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; font-size: 0.65rem; color: var(--sub); margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px;">
+        <span>Use <kbd style="font-size: 0.55rem; padding: 1px 4px;">↑</kbd> <kbd style="font-size: 0.55rem; padding: 1px 4px;">↓</kbd> to navigate, <kbd style="font-size: 0.55rem; padding: 1px 4px;">Enter</kbd> to select</span>
+        <span>Esc to close</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI PERFORMANCE REPORT MODAL -->
+  <div class="modal-overlay" id="ai-report-overlay" role="dialog" aria-modal="true" aria-labelledby="report-title" hidden>
+    <div class="modal-card" style="max-width: 440px; width: 100%; border-radius: 18px; padding: 24px; max-height: 90vh; overflow-y: auto;">
+      <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h3 class="modal-title" id="report-title" style="margin: 0; font-size: 1.15rem;">🔮 Circadian AI Report</h3>
+        <button id="report-close-btn" style="background: none; border: none; color: var(--muted); font-size: 1.5rem; cursor: pointer; padding: 0 4px; line-height: 1;">&times;</button>
+      </div>
+      
+      <div class="report-tabs" style="display: flex; width: 100%; gap: 6px; background: var(--surface-2); padding: 4px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 16px;">
+        <button class="report-tab active" data-period="7" style="flex: 1; border: none; background: var(--surface); color: var(--text); padding: 6px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">7 Days</button>
+        <button class="report-tab" data-period="30" style="flex: 1; border: none; background: none; color: var(--muted); padding: 6px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">30 Days</button>
+        <button class="report-tab" data-period="90" style="flex: 1; border: none; background: none; color: var(--muted); padding: 6px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">90 Days</button>
+        <button class="report-tab" data-period="all" style="flex: 1; border: none; background: none; color: var(--muted); padding: 6px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">All Time</button>
+      </div>
+
+      <div id="report-content-body" style="width: 100%; display: flex; flex-direction: column; gap: 14px;">
+        <!-- Filled dynamically in features.js -->
+      </div>
+      
+      <button class="modal-primary-btn" id="report-export-btn" style="margin-top: 18px;">💾 Export Shareable Card</button>
+    </div>
+  </div>
+
+  <!-- SPOTLIGHT ONBOARDING OVERLAY -->
+  <div id="onboarding-overlay" class="onboarding-overlay" hidden>
+    <div id="onboarding-tooltip" class="onboarding-tooltip">
+      <button id="onboarding-close-btn" class="onboarding-close-btn" title="Skip tour">&times;</button>
+      <p id="onboarding-text"></p>
+      <div class="onboarding-footer">
+        <button id="onboarding-skip-btn" class="onboarding-skip-btn">Skip Tutorial</button>
+        <button id="onboarding-next-btn" class="onboarding-btn">Next →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ZEN WAVE CANVAS -->
+  <canvas id="zen-wave-canvas" aria-hidden="true"></canvas>
+
+  <script src="app.js"></script>
+  <script src="features.js"></script>
+</body>
+</html>
