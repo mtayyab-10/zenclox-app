@@ -2074,6 +2074,17 @@ body.breath-mode-active .focus-back-btn {
   .palette-btn {
     display: none !important;
   }
+  /* Enforce identical button and icon sizing for Zen & Settings buttons on all mobile viewports */
+  .zen-btn,
+  .settings-btn {
+    width: 34px !important;
+    height: 34px !important;
+  }
+  .zen-btn svg,
+  .settings-btn svg {
+    width: 17px !important;
+    height: 17px !important;
+  }
 }
 
 
