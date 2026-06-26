@@ -126,8 +126,8 @@ Layered audio engine powered entirely by the **Web Audio API** — no audio file
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/pomodoro-timer.git
-cd pomodoro-timer
+git clone https://github.com/mtayyab-10/zenclox-app.git
+cd zenclox-app
 
 # Open directly in your browser
 start index.html         # Windows
@@ -239,8 +239,8 @@ Everything else picks up the change automatically.
 
 <div align="center">
 
-**Built with ❤️ using vanilla HTML, CSS, and JavaScript**
+**Built with ❤️ by [mtayyab-10](https://github.com/mtayyab-10) using vanilla HTML, CSS, and JavaScript**
 
-[Live Demo](https://zenclox.vercel.app) · [Report a Bug](https://github.com/your-username/pomodoro-timer/issues) · [Request a Feature](https://github.com/your-username/pomodoro-timer/issues)
+[Live Demo](https://zenclox.vercel.app) · [Report a Bug](https://github.com/mtayyab-10/zenclox-app/issues) · [Request a Feature](https://github.com/mtayyab-10/zenclox-app/issues)
 
 </div>
