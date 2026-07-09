@@ -893,6 +893,24 @@ body.flow-shield-active .controls:hover {
   border-color: var(--active);
   color: var(--active);
 }
+#ai-report-btn {
+  background: var(--focus);
+  color: var(--bg);
+  border-color: var(--focus);
+  font-weight: 700;
+  box-shadow: 0 2px 8px var(--focus-glow);
+}
+#ai-report-btn:hover {
+  background: var(--focus);
+  color: var(--bg);
+  border-color: var(--focus);
+  opacity: 0.9;
+  box-shadow: 0 4px 12px var(--focus-glow);
+  transform: translateY(-1px);
+}
+#ai-report-btn:active {
+  transform: translateY(0) scale(0.96);
+}
 .analytics-body {
   min-height: 140px;
   display: flex;

@@ -346,7 +346,7 @@
             <h2 class="analytics-title" id="analytics-heading">Flow Analytics</h2>
             <div class="analytics-actions" style="display: flex; gap: 8px;">
               <button class="analytics-toggle-btn" id="analytics-toggle-btn" type="button">Show Velocity</button>
-              <button class="analytics-toggle-btn" id="ai-report-btn" type="button" style="background: color-mix(in srgb, var(--focus) 10%, transparent); color: var(--focus); border-color: var(--focus);">🔮 AI Report</button>
+              <button class="analytics-toggle-btn" id="ai-report-btn" type="button">🔮 AI Report</button>
             </div>
           </div>
           <div class="analytics-body">
@@ -376,12 +376,12 @@
 
       <div class="stats-col-2">
         <!-- AI FOCUS FORECAST & PREDICTOR -->
-        <section class="ai-predictor-section" id="ai-predictor-section" aria-labelledby="predictor-heading">
+        <section class="ai-predictor-section" id="ai-predictor-section" aria-labelledby="predictor-heading" style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 16px 20px;">
           <div class="predictor-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <h2 class="predictor-title" id="predictor-heading" style="font-size: 0.78rem; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted);">🔮 Focus Forecast</h2>
+            <h2 class="predictor-title" id="predictor-heading" style="font-size: 0.78rem; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); margin: 0;">🔮 Focus Forecast</h2>
             <span class="predictor-badge" style="font-size: 0.65rem; color: var(--focus); background: color-mix(in srgb, var(--focus) 10%, transparent); padding: 2px 8px; border-radius: 100px; font-weight: 600;">Circadian AI</span>
           </div>
-          <div class="predictor-body" style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 16px 20px;">
+          <div class="predictor-body">
             <canvas id="energy-curve-canvas" style="display: block; width: 100%; height: 150px;"></canvas>
             <p class="predictor-insight" id="predictor-insight-text" style="font-size: 0.74rem; color: var(--muted); margin-top: 10px; line-height: 1.4; border-top: 1px solid var(--border); padding-top: 8px;">Analyzing your circadian rhythm and focus velocity...</p>
           </div>
