@@ -1,5 +1,9 @@
 'use strict';
 
+// localStorage proxy is already defined in app.js — reuse it here
+// (Duplicate const declaration would cause a fatal SyntaxError)
+
+
 /**
  * Zenclox — Advanced Features Extension (features.js)
  * Implements 11 premium features client-side.
@@ -18,8 +22,17 @@ const MOOD_COLORS = {
   fire: '#fb923c'        // Orange/Gold
 };
 
-// Help helper
+// BUG-001: Shared HTML escaping utility for XSS prevention
+// BUG-M18 FIX: Check unified window.esc utility
+function escHtml(s) {
+  if (window.esc) return window.esc(s);
+  if (!s) return '';
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// BUG-M17 FIX: Check unified window.todayStr utility
 const getTodayStr = () => {
+  if (window.todayStr) return window.todayStr();
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
@@ -28,7 +41,7 @@ const getActiveColor = () => {
   try {
     const computedColor = getComputedStyle(document.documentElement).getPropertyValue('--active').trim();
     if (computedColor) return computedColor;
-  } catch (e) {}
+  } catch (e) { }
 
   const theme = document.documentElement.getAttribute('data-theme') || 'void';
   const isBreak = document.body.classList.contains('mode-break');
@@ -101,18 +114,25 @@ const DNASystem = {
     this.canvas.addEventListener('mouseleave', () => this.handleMouseLeave());
 
     // Resize responsiveness (High-DPI aware)
-    const resizeObserver = new ResizeObserver(() => {
-      if (this.canvas) {
+    const handleResize = () => {
+      if (this.canvas && this.canvas.parentElement) {
         const dpr = window.devicePixelRatio || 1;
         const rect = this.canvas.parentElement.getBoundingClientRect();
+        const parentHeight = rect.height || 260;
         this.canvas.width = rect.width * dpr;
-        this.canvas.height = 260 * dpr;
+        this.canvas.height = parentHeight * dpr;
         this.canvas.style.width = `${rect.width}px`;
-        this.canvas.style.height = `260px`;
+        this.canvas.style.height = `${parentHeight}px`;
         this.renderStrand();
       }
-    });
-    resizeObserver.observe(this.canvas.parentElement);
+    };
+
+    if (typeof ResizeObserver !== 'undefined' && this.canvas.parentElement) {
+      const resizeObserver = new ResizeObserver(handleResize);
+      resizeObserver.observe(this.canvas.parentElement);
+    } else {
+      window.addEventListener('resize', handleResize);
+    }
   },
 
   startAnimation() {
@@ -135,11 +155,23 @@ const DNASystem = {
 
   renderStrand() {
     if (!this.canvas || !this.ctx) return;
-    const ctx = this.ctx;
     const dpr = window.devicePixelRatio || 1;
-    const rect = this.canvas.getBoundingClientRect();
-    const w = rect.width || this.canvas.parentElement.clientWidth;
-    const h = rect.height || 260;
+
+    // Defensive check: If initialized/resized while hidden, parent rect width will be 0. Correct it.
+    if (this.canvas.width === 0 && this.canvas.parentElement) {
+      const rect = this.canvas.parentElement.getBoundingClientRect();
+      if (rect.width > 0) {
+        const parentHeight = rect.height || 260;
+        this.canvas.width = rect.width * dpr;
+        this.canvas.height = parentHeight * dpr;
+        this.canvas.style.width = `${rect.width}px`;
+        this.canvas.style.height = `${parentHeight}px`;
+      }
+    }
+
+    const ctx = this.ctx;
+    const w = this.canvas.width / dpr;
+    const h = this.canvas.height / dpr;
 
     // Clear entire physical backing store
     ctx.clearRect(0, 0, w * dpr, h * dpr);
@@ -272,13 +304,22 @@ const DNASystem = {
       }
     });
 
+    // BUG-M03 FIX: Save rendered positions to prevent frozen angle desync on mousemove
+    this.renderedPoints = points.map((p, idx) => ({
+      y: p.y,
+      x1: p.left.x,
+      x2: p.right.x,
+      session: p.session,
+      sessionNum: p.session.sessionNum || (nodeCount - idx)
+    }));
+
     ctx.restore();
   },
 
   drawHelixTemplate(w, h) {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, w, h);
-    
+
     const theme = document.documentElement.getAttribute('data-theme') || 'void';
     const isLight = theme === 'light';
     const textColor = isLight ? 'rgba(0, 0, 0, 0.4)' : 'rgba(255, 255, 255, 0.22)';
@@ -306,6 +347,15 @@ const DNASystem = {
         depth: Math.cos(sa)
       });
     }
+
+    // BUG-M03 FIX: Save templates for hover logic fallback
+    this.renderedPoints = points.map((p, idx) => ({
+      y: p.y,
+      x1: p.x1,
+      x2: p.x2,
+      session: { sessionNum: idx + 1 },
+      sessionNum: idx + 1
+    }));
 
     // Draw lines
     ctx.lineWidth = 1.5;
@@ -359,24 +409,19 @@ const DNASystem = {
     const w = rect.width;
     const h = rect.height;
 
-    const padding = 30;
-    const usableH = h - padding * 2;
-    const nodeCount = sessions.length;
     let closestIndex = -1;
     let minDistance = 22; // Hover hit radius
 
-    // Look for matching node in helix projection (using logical CSS coordinates)
-    for (let i = 0; i < nodeCount; i++) {
-      const y = padding + (usableH * (i / Math.max(1, nodeCount - 1)));
-      const sessionAngle = this.angle + i * 1.1;
-      const x1 = w / 2 + 45 * Math.sin(sessionAngle);
-      const x2 = w / 2 - 45 * Math.sin(sessionAngle);
+    // BUG-M03 FIX: Retrieve exact rendered coordinates to align tooltip to visual nodes
+    if (this.renderedPoints && this.renderedPoints.length > 0) {
+      for (let i = 0; i < this.renderedPoints.length; i++) {
+        const p = this.renderedPoints[i];
+        const d1 = Math.hypot(mouseX - p.x1, p.y - mouseY);
+        const d2 = Math.hypot(mouseX - p.x2, p.y - mouseY);
 
-      const d1 = Math.hypot(mouseX - x1, mouseY - y);
-      const d2 = Math.hypot(mouseX - x2, mouseY - y);
-
-      if (d1 < minDistance) { closestIndex = i; minDistance = d1; }
-      if (d2 < minDistance) { closestIndex = i; minDistance = d2; }
+        if (d1 < minDistance) { closestIndex = i; minDistance = d1; }
+        if (d2 < minDistance) { closestIndex = i; minDistance = d2; }
+      }
     }
 
     this.hoveredIndex = closestIndex;
@@ -384,15 +429,17 @@ const DNASystem = {
     const tooltip = document.getElementById('dna-tooltip');
     if (!tooltip) return;
 
-    if (closestIndex !== -1) {
-      const session = sessions[closestIndex];
-      const mins = Math.floor(session.duration / 60);
+    if (closestIndex !== -1 && this.renderedPoints && this.renderedPoints[closestIndex]) {
+      const rp = this.renderedPoints[closestIndex];
+      const session = rp.session;
+      const mins = Math.floor((session.duration || 1500) / 60);
       const moodEmoji = { struggling: '😤 Struggling', neutral: '😐 Neutral', good: '😊 Good', fire: '🔥 On Fire' };
 
+      // BUG-001: Sanitize user input before innerHTML
       tooltip.innerHTML = `
-        <div style="font-weight: 700; color: var(--active); margin-bottom: 2px;">Session #${session.sessionNum || (nodeCount - closestIndex)}</div>
-        <div style="font-size: 0.65rem; color: var(--muted); margin-bottom: 4px;">Time: ${session.time} · ${mins} mins</div>
-        ${session.intention ? `<div style="font-size: 0.7rem; border-left: 2px solid var(--border); padding-left: 6px; font-style: italic; margin-bottom: 4px; word-break: break-word;">"${session.intention}"</div>` : ''}
+        <div style="font-weight: 700; color: var(--active); margin-bottom: 2px;">Session #${rp.sessionNum}</div>
+        <div style="font-size: 0.65rem; color: var(--muted); margin-bottom: 4px;">Time: ${escHtml(session.time || '')} · ${mins} mins</div>
+        ${session.intention ? `<div style="font-size: 0.7rem; border-left: 2px solid var(--border); padding-left: 6px; font-style: italic; margin-bottom: 4px; word-break: break-word;">"${escHtml(session.intention)}"</div>` : ''}
         <div style="display: flex; justify-content: space-between; font-size: 0.65rem; color: var(--text); margin-top: 4px;">
           <span>Mood: ${moodEmoji[session.mood || 'neutral']}</span>
           <span>Score: ${session.velocity || 100} v</span>
@@ -434,9 +481,9 @@ const MoodSystem = {
         b.style.transform = 'scale(1)';
       });
 
-      // Set selected
+      // Set selected — BUG-012: use theme-aware accent color
       btn.classList.add('selected');
-      btn.style.borderColor = '#38bdf8';
+      btn.style.borderColor = getActiveColor();
       btn.style.transform = 'scale(1.15)';
       this.selectedMood = btn.dataset.mood;
     });
@@ -456,7 +503,7 @@ const MoodSystem = {
     const defaultBtn = row.querySelector('[data-mood="good"]');
     if (defaultBtn) {
       defaultBtn.classList.add('selected');
-      defaultBtn.style.borderColor = '#38bdf8';
+      defaultBtn.style.borderColor = getActiveColor();
       defaultBtn.style.transform = 'scale(1.15)';
     }
   }
@@ -535,7 +582,8 @@ const QuoteOracle = {
     // 10% probability to show a dynamic feature tip
     if (Math.random() < 0.10) {
       const tip = FEATURE_TIPS[Math.floor(Math.random() * FEATURE_TIPS.length)];
-      container.innerHTML = `<span style="color: var(--active); font-weight: 500; font-style: normal;">💡 ${tip}</span>`;
+      // BUG-M28 FIX: Sanitize quotes text output in innerHTML
+      container.innerHTML = `<span style="color: var(--active); font-weight: 500; font-style: normal;">💡 ${escHtml(tip)}</span>`;
       return;
     }
 
@@ -551,7 +599,8 @@ const QuoteOracle = {
     const list = this.quotes[category];
     const quote = list[Math.floor(Math.random() * list.length)];
 
-    container.innerHTML = `"${quote.text}" <span class="quote-author">— ${quote.author}</span>`;
+    // BUG-M28 FIX: Escape quote properties inside innerHTML
+    container.innerHTML = `"${escHtml(quote.text)}" <span class="quote-author">— ${escHtml(quote.author)}</span>`;
   }
 };
 
@@ -631,6 +680,7 @@ const CommandPalette = {
 
     // Keybindings
     document.addEventListener('keydown', (e) => {
+      if (!e || !e.key) return;
       // Ctrl+K or Cmd+K
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
@@ -659,23 +709,23 @@ const CommandPalette = {
 
   registerCommands() {
     this.commands = [
-      { name: "⏯️ Start / Pause Focus Timer", desc: "Toggle timer run state", action: () => window.handleStart() },
-      { name: "🔄 Reset Active Timer Cycle", desc: "Return countdown to original value", action: () => window.resetTimer() },
-      { name: "⏭️ Skip Cycle Mode", desc: "Shift between focus and break modes", action: () => window.skipToNext() },
+      { name: "⏯️ Start / Pause Focus Timer", desc: "Toggle timer run state", shortcut: "Space", action: () => window.handleStart() },
+      { name: "🔄 Reset Active Timer Cycle", desc: "Return countdown to original value", shortcut: "R", action: () => window.resetTimer() },
+      { name: "⏭️ Skip Cycle Mode", desc: "Shift between focus and break modes", shortcut: "S", action: () => window.skipToNext() },
       { name: "🧘 Switch to Void Theme", desc: "Deep purple aesthetic", action: () => window.applyTheme('void') },
       { name: "🔥 Switch to Forge Theme", desc: "Amber spark aesthetic", action: () => window.applyTheme('forge') },
       { name: "🌊 Switch to Ocean Theme", desc: "Calm teal water aesthetic", action: () => window.applyTheme('ocean') },
-      { name: "🌙 Toggle Zen Serenity Mode", desc: "Strip UI down to animated morphing gradient", action: () => ZenMode.toggle() },
+      { name: "🌙 Toggle Zen Serenity Mode", desc: "Strip UI down to animated morphing gradient", shortcut: "Z", action: () => ZenMode.toggle() },
       { name: "🛡️ Toggle Flow Shield Cinema Mode", desc: "Fullscreen cinematic background particles", action: () => window.toggleFlowShield() },
-      { name: "🔮 Generate AI Performance Report", desc: "Circadian rhythms and flow report modal", action: () => AIReport.open() },
-      { name: "🖼️ Export Shareable Stats Wallpaper", desc: "Downloads customized HD canvas visual of stats", action: () => WallpaperExport.export() },
+      { name: "🔮 Generate AI Performance Report", desc: "Circadian rhythms and flow report modal", shortcut: "P", action: () => AIReport.open() },
+      { name: "🖼️ Export Shareable Stats Wallpaper", desc: "Downloads customized HD canvas visual of stats", shortcut: "W", action: () => WallpaperExport.export() },
       { name: "🌧️ Toggle Rain Ambience", desc: "Web Audio white noise rain generator", action: () => window.startAmbientSound('rain') },
       { name: "🌌 Toggle Deep Space Drones", desc: "Harmonized synthesizer soundscape", action: () => window.startAmbientSound('space') },
       { name: "🪵 Toggle Fireplace Crackles", desc: "Synthesized firewood snap clicks", action: () => window.startAmbientSound('fire') },
       { name: "🎧 Toggle Binaural Focus Beats", desc: "Alpha/Theta frequency brainwave triggers", action: () => window.startAmbientSound('binaural') },
-      { name: "📅 Export CSV Session Log", desc: "Download local spreadsheet file of history", action: () => window.exportCSV() },
+      { name: "📅 Export CSV Session Log", desc: "Download local spreadsheet file of history", shortcut: "C", action: () => window.exportCSV() },
       { name: "⚙️ Toggle Settings Panel", desc: "Access sliders and interval settings", action: () => document.getElementById('settings-toggle-btn')?.click() },
-      { name: "🎬 Play Guided Onboarding Tour", desc: "Restart the spotlight walk-through of features", action: () => { localStorage.removeItem('zenclox_onboarding_completed_v1'); OnboardingSystem.start(); } }
+      { name: "🎬 Play Guided Onboarding Tour", desc: "Restart the spotlight walk-through of features", shortcut: "T", action: () => { localStorage.removeItem('zenclox_onboarding_completed_v1'); OnboardingSystem.start(); } }
     ];
   },
 
@@ -693,6 +743,7 @@ const CommandPalette = {
       input.value = '';
       this.selectedIndex = 0;
       this.filterCommands();
+      if (window.trapFocus) window.trapFocus(overlay);
       setTimeout(() => input.focus(), 50);
     }
   },
@@ -720,14 +771,20 @@ const CommandPalette = {
       return;
     }
 
+    if (this.selectedIndex >= filtered.length || this.selectedIndex < 0 || isNaN(this.selectedIndex)) {
+      this.selectedIndex = 0;
+    }
+
     filtered.forEach((cmd, idx) => {
       const item = document.createElement('div');
       item.className = 'command-palette-item' + (idx === this.selectedIndex ? ' active' : '');
+      // BUG-H10 FIX: Escape command names and descriptions to prevent XSS
       item.innerHTML = `
         <div style="display: flex; flex-direction: column; text-align: left;">
-          <span style="font-weight:600; color:var(--text);">${cmd.name}</span>
-          <span style="font-size: 0.65rem; color: var(--sub);">${cmd.desc}</span>
+          <span style="font-weight:600; color:var(--text);">${escHtml(cmd.name)}</span>
+          <span style="font-size: 0.65rem; color: var(--sub);">${escHtml(cmd.desc)}</span>
         </div>
+        ${cmd.shortcut ? `<span class="command-shortcut">${escHtml(cmd.shortcut)}</span>` : ''}
       `;
       item.addEventListener('click', () => {
         this.close();
@@ -777,12 +834,23 @@ const CommandPalette = {
 // ============================================================
 const WallpaperExport = {
   export() {
-    // Create heavy resolution canvas
-    const canvas = document.createElement('canvas');
-    canvas.width = 1080;
-    canvas.height = 1920;
-    const ctx = canvas.getContext('2d');
+    // BUG-M12 FIX: Wait for document.fonts.ready before rendering canvas text to prevent system default font fallbacks
+    const runExport = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1080;
+      canvas.height = 1920;
+      const ctx = canvas.getContext('2d');
+      this.drawWallpaper(canvas, ctx);
+    };
 
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(runExport);
+    } else {
+      runExport();
+    }
+  },
+
+  drawWallpaper(canvas, ctx) {
     const theme = document.documentElement.getAttribute('data-theme') || 'void';
     const activeColor = getActiveColor();
     const surfaceColor = theme === 'forge' ? '#1a1005' : theme === 'ocean' ? '#051624' : '#16161f';
@@ -972,6 +1040,8 @@ const WallpaperExport = {
 const AIPredictor = {
   canvas: null,
   ctx: null,
+  // BUG-H07 FIX: Store resize handler reference for cleanup
+  _resizeHandler: null,
 
   init() {
     this.canvas = document.getElementById('energy-curve-canvas');
@@ -981,16 +1051,22 @@ const AIPredictor = {
     // Fit canvas resolution to parent width (High-DPI aware)
     const updateSize = () => {
       if (this.canvas) {
+        // BUG-H07 FIX: Skip render when canvas is not visible (hidden panel, etc.)
+        if (this.canvas.offsetParent === null) return;
         const dpr = window.devicePixelRatio || 1;
         const w = this.canvas.clientWidth || 300;
-        const h = 90;
+        const h = 150;
         this.canvas.width = w * dpr;
         this.canvas.height = h * dpr;
+        this.canvas.style.width = `${w}px`;
+        this.canvas.style.height = `${h}px`;
         this.renderForecast();
       }
     };
     updateSize();
-    window.addEventListener('resize', updateSize);
+    // BUG-H07 FIX: Store reference for potential future cleanup
+    this._resizeHandler = updateSize;
+    window.addEventListener('resize', this._resizeHandler);
   },
 
   renderForecast() {
@@ -1072,9 +1148,9 @@ const AIPredictor = {
     const descEl = document.getElementById('predictor-insight-text');
     if (descEl) {
       if (history.length < 5) {
-        descEl.innerHTML = `🌟 <strong>Focus Forecast:</strong> Best slots are predicted near <strong>${fmtHr(peak1)} - ${fmtHr(peak1 + 2)}</strong> and <strong>${fmtHr(peak2)} - ${fmtHr(peak2 + 2)}</strong>. Complete ${5 - history.length} more sessions to refine this prediction.`;
+        descEl.innerHTML = `<strong>Focus Forecast:</strong> Best slots are predicted near <strong>${fmtHr(peak1)} - ${fmtHr(peak1 + 2)}</strong> and <strong>${fmtHr(peak2)} - ${fmtHr(peak2 + 2)}</strong>. Complete ${5 - history.length} more sessions to refine this prediction.`;
       } else {
-        descEl.innerHTML = `🔥 <strong>Dynamic Optimum:</strong> Peak mental flow calculated around <strong>${fmtHr(peak1)}–${fmtHr(peak1 + 2)}</strong> &amp; <strong>${fmtHr(peak2)}–${fmtHr(peak2 + 2)}</strong>. Focus velocity averages ${Math.round(daylightHours[0].score)}% in these windows.`;
+        descEl.innerHTML = `<strong>Dynamic Optimum:</strong> Peak mental flow calculated around <strong>${fmtHr(peak1)}–${fmtHr(peak1 + 2)}</strong> &amp; <strong>${fmtHr(peak2)}–${fmtHr(peak2 + 2)}</strong>. Focus velocity averages ${Math.round(daylightHours[0].score)}% in these windows.`;
       }
     }
 
@@ -1144,7 +1220,8 @@ const AIPredictor = {
 
   getAllHistory() {
     try {
-      return JSON.parse(localStorage.getItem(ALL_HISTORY_KEY)) || [];
+      const data = JSON.parse(localStorage.getItem(ALL_HISTORY_KEY)) || [];
+      return Array.isArray(data) ? data.filter(Boolean) : [];
     } catch (e) {
       return [];
     }
@@ -1184,6 +1261,10 @@ const AIReport = {
     });
 
     exportBtn?.addEventListener('click', () => this.exportReportCard());
+
+    // BUG-029: Connect the Flow Analytics trigger button
+    const triggerBtn = document.getElementById('ai-report-btn');
+    triggerBtn?.addEventListener('click', () => this.open());
   },
 
   open() {
@@ -1191,12 +1272,21 @@ const AIReport = {
     if (overlay) {
       overlay.removeAttribute('hidden');
       this.generateReport();
+      // BUG-M09 FIX: Focus close button inside modal on open for keyboard navigation
+      const closeBtn = document.getElementById('report-close-btn');
+      if (closeBtn) setTimeout(() => closeBtn.focus(), 50);
+      if (window.trapFocus) window.trapFocus(overlay);
     }
   },
 
   close() {
     const overlay = document.getElementById('ai-report-overlay');
-    if (overlay) overlay.setAttribute('hidden', '');
+    if (overlay) {
+      overlay.setAttribute('hidden', '');
+      // Return focus to trigger button
+      const triggerBtn = document.getElementById('ai-report-btn');
+      if (triggerBtn) triggerBtn.focus();
+    }
   },
 
   generateReport() {
@@ -1213,11 +1303,14 @@ const AIReport = {
       const now = new Date();
       const cutoffDate = new Date();
       cutoffDate.setDate(now.getDate() - this.currentPeriod);
+      const cutoffYear = cutoffDate.getFullYear();
+      const cutoffMonth = String(cutoffDate.getMonth() + 1).padStart(2, '0');
+      const cutoffDay = String(cutoffDate.getDate()).padStart(2, '0');
+      const cutoffStr = `${cutoffYear}-${cutoffMonth}-${cutoffDay}`;
 
       history = history.filter(item => {
         if (!item.date) return false;
-        const d = new Date(item.date);
-        return d >= cutoffDate;
+        return item.date >= cutoffStr;
       });
     }
 
@@ -1256,7 +1349,8 @@ const AIReport = {
     const avgVelocity = Math.round(totalVelocity / totalSessions);
     const successRate = Math.round((successCount / totalSessions) * 100);
     const topTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]);
-    const topTagStr = topTags[0] ? topTags[0][0] : 'None';
+    // BUG-001: Sanitize tag names before rendering in innerHTML
+    const topTagStr = topTags[0] ? escHtml(topTags[0][0]) : 'None';
 
     // Construct glassmorphic widget summary
     let moodVisuals = '';
@@ -1333,62 +1427,72 @@ const AIReport = {
 // 10. ZEN MODE SANCTUARY
 // ============================================================
 // Sound Synthesizers for Zen Mode
-window.playSingingBowl = function() {
+window.playSingingBowl = function () {
   try {
     const ctx = getCtx();
     const now = ctx.currentTime;
     const duration = 6.0;
-    
+
     const master = ctx.createGain();
     master.gain.setValueAtTime(0, now);
     master.gain.linearRampToValueAtTime(0.35, now + 0.1);
     master.gain.exponentialRampToValueAtTime(0.001, now + duration);
     master.connect(ctx.destination);
-    
+
     // Tibetan bowl frequencies (150Hz fundamental + overtones)
     const frequencies = [150, 300.5, 451.2, 602.8, 755.1, 903.5];
     const gains = [0.4, 0.25, 0.15, 0.1, 0.05, 0.03];
-    
+
     frequencies.forEach((freq, idx) => {
       const osc = ctx.createOscillator();
       const g = ctx.createGain();
-      
+
       osc.type = 'sine';
       osc.frequency.value = freq;
-      
+
       // Detune LFO for slow, rich metallic vibration
       const lfo = ctx.createOscillator();
       const lfoGain = ctx.createGain();
       lfo.frequency.value = 1.6 + idx * 0.3;
       lfoGain.gain.value = 2.0;
-      
+
       lfo.connect(lfoGain);
       lfoGain.connect(osc.frequency);
       lfo.start();
-      
+
       g.gain.value = gains[idx];
       osc.connect(g);
       g.connect(master);
-      
+
       osc.start(now);
       osc.stop(now + duration);
-      
+
       setTimeout(() => {
         try {
+          osc.stop();
           lfo.stop();
+          osc.disconnect();
           lfo.disconnect();
-        } catch(e) {}
+          lfoGain.disconnect();
+          g.disconnect();
+        } catch (e) { }
       }, (duration + 0.2) * 1000);
     });
-  } catch(e) {}
+
+    setTimeout(() => {
+      try {
+        master.disconnect();
+      } catch (e) { }
+    }, (duration + 0.5) * 1000);
+  } catch (e) { }
 };
 
-window.playWindChime = function() {
+window.playWindChime = function () {
   try {
     const ctx = getCtx();
     const now = ctx.currentTime;
     const notes = [880, 1046.5, 1318.5]; // A5, C6, E6 chimes
-    
+
     notes.forEach((freq, i) => {
       setTimeout(() => {
         try {
@@ -1402,10 +1506,17 @@ window.playWindChime = function() {
           g.connect(ctx.destination);
           osc.start();
           osc.stop(ctx.currentTime + 1.3);
-        } catch(e) {}
+
+          setTimeout(() => {
+            try {
+              osc.disconnect();
+              g.disconnect();
+            } catch (e) { }
+          }, 1500);
+        } catch (e) { }
       }, i * 150);
     });
-  } catch(e) {}
+  } catch (e) { }
 };
 
 // Circadian Color Stages & Interpolator
@@ -1415,28 +1526,65 @@ const ZEN_STAGES = [
   { c1: '#051b14', c2: '#06221c', c3: '#020f0a', c4: '#0b2b24' }  // Calming Forest Green
 ];
 
+const ZEN_STAGES_LIGHT = [
+  { c1: '#f8fafc', c2: '#f3e8ff', c3: '#f1f5f9', c4: '#fae8ff' }, // Soft Slate Lavender
+  { c1: '#fff1f2', c2: '#fff7ed', c3: '#fff1f2', c4: '#fef3c7' }, // Soft Sunlit Rose
+  { c1: '#f0fdf4', c2: '#ecfdf5', c3: '#f0fdf4', c4: '#dcfce7' }  // Relaxing Pale Mint
+];
+
 function interpolateColor(color1, color2, factor) {
   const r1 = parseInt(color1.substring(1, 3), 16);
   const g1 = parseInt(color1.substring(3, 5), 16);
   const b1 = parseInt(color1.substring(5, 7), 16);
-  
+
   const r2 = parseInt(color2.substring(1, 3), 16);
   const g2 = parseInt(color2.substring(3, 5), 16);
   const b2 = parseInt(color2.substring(5, 7), 16);
-  
+
   const r = Math.round(r1 + factor * (r2 - r1));
   const g = Math.round(g1 + factor * (g2 - g1));
   const b = Math.round(b1 + factor * (b2 - b1));
-  
+
   return `#${String(r.toString(16)).padStart(2, '0')}${String(g.toString(16)).padStart(2, '0')}${String(b.toString(16)).padStart(2, '0')}`;
 }
 
-window.updateZenColors = function() {
+window.updateZenColors = function () {
   if (!document.body.classList.contains('zen-mode-active')) return;
-  
-  // Persist the initial Cosmic Midnight stage colors till the end of the session
-  const currentColors = ZEN_STAGES[0];
-  
+
+  // BUG-M13/M14 FIX: Calculate smooth color stages interpolation based on the current hour/minute of the day
+  const hour = new Date().getHours();
+  const min = new Date().getMinutes();
+  const totalMins = hour * 60 + min; // 0 to 1439
+
+  let currentColors = { c1: '', c2: '', c3: '', c4: '' };
+  let stageA, stageB, factor;
+
+  const theme = document.documentElement.getAttribute('data-theme') || 'void';
+  const stages = theme === 'light' ? ZEN_STAGES_LIGHT : ZEN_STAGES;
+
+  if (totalMins < 360) { // 12am to 6am: Cosmic Midnight (0) to Sunset Violet (1)
+    stageA = stages[0];
+    stageB = stages[1];
+    factor = totalMins / 360;
+  } else if (totalMins < 720) { // 6am to 12pm: Sunset Violet (1) to Calming Green (2)
+    stageA = stages[1];
+    stageB = stages[2];
+    factor = (totalMins - 360) / 360;
+  } else if (totalMins < 1080) { // 12pm to 6pm: Calming Green (2) to Sunset Violet (1)
+    stageA = stages[2];
+    stageB = stages[1];
+    factor = (totalMins - 720) / 360;
+  } else { // 6pm to 12am: Sunset Violet (1) to Cosmic Midnight (0)
+    stageA = stages[1];
+    stageB = stages[0];
+    factor = (totalMins - 1080) / 360;
+  }
+
+  currentColors.c1 = interpolateColor(stageA.c1, stageB.c1, factor);
+  currentColors.c2 = interpolateColor(stageA.c2, stageB.c2, factor);
+  currentColors.c3 = interpolateColor(stageA.c3, stageB.c3, factor);
+  currentColors.c4 = interpolateColor(stageA.c4, stageB.c4, factor);
+
   document.body.style.setProperty('--zen-bg-1', currentColors.c1);
   document.body.style.setProperty('--zen-bg-2', currentColors.c2);
   document.body.style.setProperty('--zen-bg-3', currentColors.c3);
@@ -1444,7 +1592,7 @@ window.updateZenColors = function() {
 };
 
 // Sound Wave Ripples Canvas Animation
-window.getSoundEnergy = function() {
+window.getSoundEnergy = function () {
   let energy = 0.5;
   const active = window.activeSounds || {};
   if (active.rain) {
@@ -1471,27 +1619,33 @@ const ZenWave = {
   ctx: null,
   animId: null,
   phase: 0,
-  
+  // BUG-H05 FIX: Store resize handler reference for removal in stop()
+  _resizeHandler: null,
+
   init() {
     this.canvas = document.getElementById('zen-wave-canvas');
     if (!this.canvas) return;
     this.ctx = this.canvas.getContext('2d');
-    
-    const resize = () => {
+
+    this._resizeHandler = () => {
       if (this.canvas) {
         this.canvas.width = window.innerWidth;
         this.canvas.height = 120;
       }
     };
-    resize();
-    window.addEventListener('resize', resize);
+    this._resizeHandler();
+    window.addEventListener('resize', this._resizeHandler);
   },
-  
+
   start() {
     if (this.animId) return;
+    if (this._resizeHandler) {
+      window.addEventListener('resize', this._resizeHandler);
+      this._resizeHandler();
+    }
     this.animate();
   },
-  
+
   stop() {
     if (this.animId) {
       cancelAnimationFrame(this.animId);
@@ -1500,26 +1654,30 @@ const ZenWave = {
     if (this.ctx && this.canvas) {
       this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     }
+    // BUG-H05 FIX: Remove resize listener when Zen Mode exits
+    if (this._resizeHandler) {
+      window.removeEventListener('resize', this._resizeHandler);
+    }
   },
-  
+
   animate() {
     if (!this.canvas || !this.ctx) return;
     const ctx = this.ctx;
     const w = this.canvas.width;
     const h = this.canvas.height;
     ctx.clearRect(0, 0, w, h);
-    
+
     const energy = window.getSoundEnergy();
     this.phase += 0.008 * energy;
-    
+
     const themeColor = getActiveColor();
-    
+
     for (let i = 0; i < 3; i++) {
       ctx.beginPath();
       const wavePhase = this.phase + (i * Math.PI / 3);
       const amplitude = (15 + i * 8) * (energy * 0.6 + 0.4);
       const frequency = 0.003 + (i * 0.0015);
-      
+
       ctx.moveTo(0, h);
       for (let x = 0; x <= w; x += 15) {
         const y = h - 35 - Math.sin(x * frequency + wavePhase) * amplitude;
@@ -1527,12 +1685,12 @@ const ZenWave = {
       }
       ctx.lineTo(w, h);
       ctx.closePath();
-      
+
       const alpha = (0.04 - (i * 0.01));
       ctx.fillStyle = themeColor + Math.round(alpha * 255).toString(16).padStart(2, '0');
       ctx.fill();
     }
-    
+
     this.animId = requestAnimationFrame(() => this.animate());
   }
 };
@@ -1551,7 +1709,7 @@ const ZenPebbles = {
     "Let go of the need for control. Flow with the waves."
   ],
   fadeTimeout: null,
-  
+
   init() {
     document.querySelectorAll('.zen-pebble').forEach(pebble => {
       pebble.addEventListener('click', () => {
@@ -1560,22 +1718,42 @@ const ZenPebbles = {
       });
     });
   },
-  
+
   triggerPebble(index) {
     if (window.playWindChime) window.playWindChime();
-    
+
     const quoteEl = document.getElementById('zen-pebble-quote');
     if (!quoteEl) return;
-    
-    const rIdx = Math.floor(Math.random() * this.quotes.length);
-    quoteEl.textContent = this.quotes[rIdx];
+
+    const grounding = [
+      "Drop your shoulders. Let go of the last hour.",
+      "Breathing in, I calm body and mind. Breathing out, I smile.",
+      "Feel the physical touch of your seat, your breath. You are here."
+    ];
+    const reflection = [
+      "Do not hurry; as long as you arrive, it is enough.",
+      "Peace is every step. The path is your goal.",
+      "Your worth is not defined by your productivity. Breathe."
+    ];
+    const presence = [
+      "Only this moment exists. Let thoughts drift away like leaves in a river.",
+      "Focus is not force. It is resting your attention gently.",
+      "Let go of the need for control. Flow with the waves."
+    ];
+
+    let selectedPool = grounding;
+    if (index === "1") selectedPool = reflection;
+    if (index === "2") selectedPool = presence;
+
+    const rIdx = Math.floor(Math.random() * selectedPool.length);
+    quoteEl.textContent = selectedPool[rIdx];
     quoteEl.classList.remove('active');
-    
+
     // Force reflow
     void quoteEl.offsetWidth;
-    
+
     quoteEl.classList.add('active');
-    
+
     clearTimeout(this.fadeTimeout);
     this.fadeTimeout = setTimeout(() => {
       quoteEl.classList.remove('active');
@@ -1588,29 +1766,33 @@ const GardenSystem = {
   ctx: null,
   animId: null,
   growthProgress: 0,
+  // BUG-H06 FIX: Store resize handler reference for removal
+  _resizeHandler: null,
 
   init() {
     this.canvas = document.getElementById('zen-garden-canvas');
     if (!this.canvas) return;
     this.ctx = this.canvas.getContext('2d');
-    
-    const resize = () => {
+
+    this._resizeHandler = () => {
       if (this.canvas) {
         const dpr = window.devicePixelRatio || 1;
         const rect = this.canvas.getBoundingClientRect();
         this.canvas.width = rect.width * dpr;
-        this.canvas.height = 160 * dpr;
-        this.canvas.style.width = `${rect.width}px`;
-        this.canvas.style.height = `160px`;
+        this.canvas.height = rect.height * dpr;
       }
     };
-    resize();
-    window.addEventListener('resize', resize);
+    this._resizeHandler();
+    window.addEventListener('resize', this._resizeHandler);
   },
 
   start() {
     if (this.animId) return;
     this.growthProgress = 0;
+    if (this._resizeHandler) {
+      window.addEventListener('resize', this._resizeHandler);
+      this._resizeHandler();
+    }
     this.animate();
   },
 
@@ -1619,15 +1801,18 @@ const GardenSystem = {
       cancelAnimationFrame(this.animId);
       this.animId = null;
     }
+    // BUG-H06 FIX: Remove resize listener on stop
+    if (this._resizeHandler) {
+      window.removeEventListener('resize', this._resizeHandler);
+    }
   },
 
   animate() {
     if (!this.canvas || !this.ctx) return;
     const ctx = this.ctx;
     const dpr = window.devicePixelRatio || 1;
-    const rect = this.canvas.getBoundingClientRect();
-    const w = rect.width || this.canvas.parentElement.clientWidth;
-    const h = rect.height || 160;
+    const w = this.canvas.width / dpr;
+    const h = this.canvas.height / dpr;
 
     ctx.clearRect(0, 0, w * dpr, h * dpr);
 
@@ -1637,24 +1822,27 @@ const GardenSystem = {
     // Calculate dynamic growth target based on time elapsed
     const elapsed = window.totalSecs - window.remaining;
     const pct = window.totalSecs > 0 ? (elapsed / window.totalSecs) : 0;
-    
+
     // Smooth interpolation for tree growth
     this.growthProgress += (pct - this.growthProgress) * 0.05;
-    
+
     // Base recursive depth increases with total history completed
     let historyCount = 0;
     try {
       historyCount = (window.focusHistory || []).length;
-    } catch(e) {}
+    } catch (e) { }
     const baseDepth = 2 + Math.min(Math.floor(historyCount / 2), 3); // max depth 5
 
     const activeColor = getActiveColor();
+
+    // BUG-M32 FIX: Cache the frame start timestamp once per animate() loop
+    this.frameTime = Date.now();
 
     // Draw generative trunk
     const startX = w / 2;
     const startY = h - 10;
     const trunkLen = 42 + Math.min(historyCount * 2, 10);
-    
+
     this.drawBranch(ctx, startX, startY, trunkLen * Math.min(1.0, this.growthProgress + 0.15), -Math.PI / 2, 7, baseDepth, activeColor, this.growthProgress);
 
     ctx.restore();
@@ -1688,7 +1876,9 @@ const GardenSystem = {
     // Recurse with organic wind sway
     const nextLen = len * 0.74;
     const nextWidth = branchWidth * 0.68;
-    const spread = 0.38 + 0.05 * Math.sin(Date.now() / 2000 + depth);
+    // BUG-M32 FIX: Use cached this.frameTime instead of calling Date.now() multiple times in recursion
+    const t = this.frameTime || Date.now();
+    const spread = 0.38 + 0.05 * Math.sin(t / 2000 + depth);
 
     this.drawBranch(ctx, endX, endY, nextLen, angle - spread, nextWidth, depth - 1, leafColor, progress);
     this.drawBranch(ctx, endX, endY, nextLen, angle + spread, nextWidth, depth - 1, leafColor, progress);
@@ -1701,6 +1891,8 @@ const ZenBgSystem = {
   animId: null,
   stars: [],
   noiseValues: [],
+  // BUG-H06 FIX: Store resize handler reference for removal
+  _resizeHandler: null,
 
   init() {
     window.ZenBgSystem = this;
@@ -1709,19 +1901,19 @@ const ZenBgSystem = {
     this.ctx = this.canvas.getContext('2d');
     this.initNoise();
 
-    const handleResize = () => {
+    // BUG-016: Removed ctx.scale from resize handler to prevent compounding transforms
+    this._resizeHandler = () => {
       if (this.canvas) {
         const dpr = window.devicePixelRatio || 1;
         this.canvas.width = window.innerWidth * dpr;
         this.canvas.height = window.innerHeight * dpr;
         this.canvas.style.width = `${window.innerWidth}px`;
         this.canvas.style.height = `${window.innerHeight}px`;
-        this.ctx.scale(dpr, dpr);
         this.generateStars();
       }
     };
-    window.addEventListener('resize', handleResize);
-    handleResize();
+    window.addEventListener('resize', this._resizeHandler);
+    this._resizeHandler();
   },
 
   initNoise() {
@@ -1734,7 +1926,7 @@ const ZenBgSystem = {
 
   hashPRNG(seed) {
     let s = seed;
-    return function() {
+    return function () {
       s = (s * 1664525 + 1013904223) % 4294967296;
       return s / 4294967296;
     };
@@ -1756,7 +1948,7 @@ const ZenBgSystem = {
     let currentScale = scale;
     const fullOctaves = Math.floor(octaves);
     const fracOctave = octaves - fullOctaves;
-    
+
     for (let i = 0; i < fullOctaves; i++) {
       y += (this.noise(x * currentScale + i * 35.7 + seed) - 0.5) * currentAmp;
       currentAmp *= roughness;
@@ -1786,14 +1978,14 @@ const ZenBgSystem = {
     let stars = [];
     try {
       stars = JSON.parse(localStorage.getItem(starsKey)) || [];
-    } catch(e) {}
-    
+    } catch (e) { }
+
     const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
     stars = stars.filter(s => s.timestamp > oneWeekAgo);
 
     const x = 0.08 + Math.random() * 0.84;
     const y = 0.08 + Math.random() * 0.44;
-    
+
     stars.push({
       timestamp: Date.now(),
       x,
@@ -1802,7 +1994,7 @@ const ZenBgSystem = {
 
     try {
       localStorage.setItem(starsKey, JSON.stringify(stars));
-    } catch(e) {}
+    } catch (e) { }
 
     this.generateStars();
   },
@@ -1812,11 +2004,11 @@ const ZenBgSystem = {
     const w = window.innerWidth;
     const h = window.innerHeight;
     const starsKey = 'zenclox_constellation_stars_v1';
-    
+
     let storedStars = [];
     try {
       storedStars = JSON.parse(localStorage.getItem(starsKey)) || [];
-    } catch(e) {}
+    } catch (e) { }
 
     const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
     storedStars = storedStars.filter(s => s.timestamp > oneWeekAgo);
@@ -1830,10 +2022,10 @@ const ZenBgSystem = {
         for (let i = 0; i < timeStr.length; i++) {
           hash = (hash << 5) - hash + timeStr.charCodeAt(i);
         }
-        
+
         const seedX = 0.08 + (Math.abs(hash % 1000) / 1000) * 0.84;
         const seedY = 0.08 + (Math.abs((hash >> 3) % 1000) / 1000) * 0.44;
-        
+
         storedStars.push({
           timestamp: Date.now() - idx * 2 * 3600 * 1000,
           x: seedX,
@@ -1842,7 +2034,7 @@ const ZenBgSystem = {
       });
       try {
         localStorage.setItem(starsKey, JSON.stringify(storedStars));
-      } catch(e) {}
+      } catch (e) { }
     }
 
     this.stars = [];
@@ -1882,6 +2074,10 @@ const ZenBgSystem = {
 
   start() {
     if (this.animId) return;
+    if (this._resizeHandler) {
+      window.addEventListener('resize', this._resizeHandler);
+      this._resizeHandler();
+    }
     this.generateStars();
     this.animate();
   },
@@ -1893,6 +2089,10 @@ const ZenBgSystem = {
     }
     if (this.ctx && this.canvas) {
       this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+    // BUG-H06 FIX: Remove resize listener on stop
+    if (this._resizeHandler) {
+      window.removeEventListener('resize', this._resizeHandler);
     }
   },
 
@@ -1939,10 +2139,14 @@ const ZenBgSystem = {
   animate() {
     if (!this.canvas || !this.ctx) return;
     const ctx = this.ctx;
+    const dpr = window.devicePixelRatio || 1;
     const w = window.innerWidth;
     const h = window.innerHeight;
 
-    ctx.clearRect(0, 0, w, h);
+    // BUG-016: Clear full backing store and use save/scale/restore pattern
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.save();
+    ctx.scale(dpr, dpr);
 
     const theme = document.documentElement.getAttribute('data-theme') || 'void';
     const activeColor = getActiveColor();
@@ -1995,12 +2199,12 @@ const ZenBgSystem = {
 
     // 2. Generative Sumi-e Mountains
     const focusMins = this.getTodayElapsedFocusMinutes();
-    
+
     // Smooth fractal detail progression: detail levels mapped to octaves
     const baseOctaves = 3.0;
     const maxExtraOctaves = 4.0;
     const octaves = baseOctaves + Math.min(focusMins / 5.0, maxExtraOctaves);
-    
+
     // Smooth height growth
     const growthFactor = 1.0 + Math.min(focusMins / 30.0, 0.4);
 
@@ -2061,6 +2265,7 @@ const ZenBgSystem = {
       ctx.fillRect(0, layer.baseY - 40, w, h - (layer.baseY - 40));
     });
 
+    ctx.restore();
     this.animId = requestAnimationFrame(() => this.animate());
   },
 
@@ -2100,9 +2305,20 @@ const ZenMode = {
     });
 
     // Keyboard shortcut (z key)
+    // BUG-020: Also suppress Z shortcut when command palette is open
     document.addEventListener('keydown', (e) => {
+      if (!e || !e.key) return;
       const activeElement = document.activeElement;
       if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) return;
+      if (typeof CommandPalette !== 'undefined' && CommandPalette.isOpen) return;
+      const aiReport = document.getElementById('ai-report-overlay');
+      if (aiReport && !aiReport.hidden) return;
+      const intention = document.getElementById('intention-overlay');
+      if (intention && !intention.hidden) return;
+      const reflection = document.getElementById('reflection-overlay');
+      if (reflection && !reflection.hidden) return;
+      const settings = document.getElementById('settings-panel');
+      if (settings && !settings.hidden) return;
       if (e.key.toLowerCase() === 'z') {
         e.preventDefault();
         this.toggle();
@@ -2133,23 +2349,39 @@ const ZenMode = {
     }
 
     if (this.active) {
-      // Auto mix rain/space drone at low volume for calm
-      if (window.getCtx) window.getCtx();
-
+      // BUG-H13 FIX: Save current sound state before modifying — only auto-start if not already playing
       const sliderRain = document.getElementById('slider-rain');
       const sliderSpace = document.getElementById('slider-space');
-      if (sliderRain) sliderRain.value = '20';
-      if (sliderSpace) sliderSpace.value = '20';
+      this._savedSoundState = {
+        rainSlider: sliderRain?.value,
+        spaceSlider: sliderSpace?.value,
+        rainActive: !!(window.activeSounds?.rain),
+        spaceActive: !!(window.activeSounds?.space)
+      };
 
-      if (window.activeSounds) {
-        if (!window.activeSounds.rain && window.startAmbientSound) {
-          window.startAmbientSound('rain');
+      if (window.getCtx) window.getCtx();
+
+      // BUG-H13 FIX: Only set slider values and start sounds if they weren't already active.
+      // This respects the user's explicit choice to have sounds off.
+      if (this._savedSoundState.rainActive || this._savedSoundState.spaceActive) {
+        // User already has ambient sounds playing — just adjust volumes gently
+        if (sliderRain && this._savedSoundState.rainActive) sliderRain.value = '20';
+        if (sliderSpace && this._savedSoundState.spaceActive) sliderSpace.value = '20';
+        if (window.updateAmbientVolume) window.updateAmbientVolume();
+      } else {
+        // User had no ambient sounds — start rain+space at low volume for zen atmosphere
+        if (sliderRain) sliderRain.value = '20';
+        if (sliderSpace) sliderSpace.value = '20';
+        if (window.activeSounds) {
+          if (!window.activeSounds.rain && window.startAmbientSound) {
+            window.startAmbientSound('rain');
+          }
+          if (!window.activeSounds.space && window.startAmbientSound) {
+            window.startAmbientSound('space');
+          }
         }
-        if (!window.activeSounds.space && window.startAmbientSound) {
-          window.startAmbientSound('space');
-        }
+        if (window.updateAmbientVolume) window.updateAmbientVolume();
       }
-      if (window.updateAmbientVolume) window.updateAmbientVolume();
 
       // Trigger Grounding Sound Bath (Tibetan Singing Bowl)
       if (window.playSingingBowl) window.playSingingBowl();
@@ -2163,10 +2395,25 @@ const ZenMode = {
       if (window.updateZenColors) window.updateZenColors();
     } else {
       document.body.style.cursor = 'default';
-      // Stop wave visual ripples, generative tree growth loop, and sumi-e bg system
+      // BUG-H13 FIX: Restore saved sound state — stop auto-started sounds and restore slider values
+      if (this._savedSoundState) {
+        const sliderRain = document.getElementById('slider-rain');
+        const sliderSpace = document.getElementById('slider-space');
+        if (sliderRain) sliderRain.value = this._savedSoundState.rainSlider || '40';
+        if (sliderSpace) sliderSpace.value = this._savedSoundState.spaceSlider || '40';
+        // Only stop sounds that we auto-started (i.e. user didn't have them on before Zen)
+        if (!this._savedSoundState.rainActive && window.activeSounds?.rain && window.startAmbientSound) {
+          window.startAmbientSound('rain'); // toggle off
+        }
+        if (!this._savedSoundState.spaceActive && window.activeSounds?.space && window.startAmbientSound) {
+          window.startAmbientSound('space'); // toggle off
+        }
+        if (window.updateAmbientVolume) window.updateAmbientVolume();
+        this._savedSoundState = null;
+      }
+      // Stop wave visual ripples and generative tree growth loop
       ZenWave.stop();
       GardenSystem.stop();
-      ZenBgSystem.stop();
       // Remove circadian color variables
       document.body.style.removeProperty('--zen-bg-1');
       document.body.style.removeProperty('--zen-bg-2');
@@ -2327,8 +2574,10 @@ const OnboardingSystem = {
         // Draw the radial gradient spotlight
         overlay.style.background = `radial-gradient(circle ${radius}px at ${cx}px ${cy}px, transparent 96%, rgba(0, 0, 0, 0.8) 100%)`;
 
-        // Set tooltip text
-        textEl.innerHTML = step.text;
+        // Set tooltip text with step counter (BUG-L20)
+        const stepNum = this.currentStep + 1;
+        const totalSteps = this.steps.length;
+        textEl.innerHTML = `<div style="font-size: 0.65rem; color: var(--active); font-weight: 700; text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.05em;">Step ${stepNum} of ${totalSteps}</div>` + step.text;
 
         // Set button text for final step
         if (this.currentStep === this.steps.length - 1) {
@@ -2413,24 +2662,31 @@ const initFeatures = () => {
   ZenMode.init();
   DNASystem.init();
   OnboardingSystem.init();
+  if (window.ZenBgSystem) {
+    window.ZenBgSystem.start();
+  }
 
-  // Sync allHistory with the current day's focusHistory if needed to backfill missed sessions
+  // Retrieve/declare variables for deduplication fix
   let allHistory = [];
   try {
     allHistory = JSON.parse(localStorage.getItem(ALL_HISTORY_KEY)) || [];
-  } catch (e) {}
-
+    if (!Array.isArray(allHistory)) allHistory = [];
+    allHistory = allHistory.filter(Boolean);
+  } catch (e) { }
   const localHistory = window.focusHistory || [];
   const todayStrVal = getTodayStr();
-  const existingTodayTimes = new Set(
+
+  // BUG-M30 FIX: Deduplicate startup synchronization using a unique key derived from savedAt or time + sessionNum
+  const existingTodayKeys = new Set(
     allHistory
       .filter(item => item.date === todayStrVal)
-      .map(item => item.time)
+      .map(item => item._savedAt ? item._savedAt.toString() : `${item.time}_${item.sessionNum}`)
   );
 
   let updated = false;
   localHistory.forEach(item => {
-    if (!existingTodayTimes.has(item.time)) {
+    const key = item._savedAt ? item._savedAt.toString() : `${item.time}_${item.sessionNum}`;
+    if (!existingTodayKeys.has(key)) {
       const entry = { ...item };
       if (!entry.date) entry.date = todayStrVal;
       if (!entry.mood) entry.mood = 'good';
@@ -2440,11 +2696,39 @@ const initFeatures = () => {
   });
 
   if (updated) {
-    localStorage.setItem(ALL_HISTORY_KEY, JSON.stringify(allHistory));
+    // BUG-M01 FIX: Wrap localStorage allHistory writes in try-catch to prevent QuotaExceededError crashes
+    try {
+      localStorage.setItem(ALL_HISTORY_KEY, JSON.stringify(allHistory));
+    } catch (e) {
+      console.warn("Storage quota exceeded, cannot save to all History:", e);
+    }
   }
 
   // Load persistent initial data
   AIPredictor.renderForecast();
+
+  // Populate initial Live Cognitive Widget values on startup
+  const liveVelocityEl = document.getElementById('live-report-velocity');
+  const liveConsistencyEl = document.getElementById('live-report-consistency');
+  const liveAdviceEl = document.getElementById('live-report-advice');
+  if (liveVelocityEl && liveConsistencyEl) {
+    const hist = window.focusHistory || [];
+    if (hist.length > 0) {
+      let sumVelocity = 0;
+      let completes = 0;
+      hist.forEach(s => {
+        sumVelocity += (s.velocity || 100);
+        if (s.outcome === 'yes') completes++;
+      });
+      const avgVelVal = Math.round(sumVelocity / hist.length);
+      const consVal = Math.round((completes / hist.length) * 100);
+      liveVelocityEl.textContent = `${avgVelVal}%`;
+      liveConsistencyEl.textContent = `${consVal}%`;
+      liveAdviceEl.textContent = avgVelVal >= 80
+        ? ` Cognitive flow is peak. Your current zone velocity is high. Proceed to next block.`
+        : ` Focus drift detected. Take a box-breathing prep min to re-establish clean velocity.`;
+    }
+  }
 
   // Bind view-switcher toggle in history card
   const historyToggleBtn = document.getElementById('history-view-toggle');
@@ -2488,7 +2772,12 @@ const initFeatures = () => {
           allHistory = JSON.parse(localStorage.getItem(ALL_HISTORY_KEY)) || [];
         } catch (e) { }
         allHistory.unshift(entry);
-        localStorage.setItem(ALL_HISTORY_KEY, JSON.stringify(allHistory));
+        // BUG-M01 FIX: Wrap Hook 1 allHistory write in try-catch
+        try {
+          localStorage.setItem(ALL_HISTORY_KEY, JSON.stringify(allHistory));
+        } catch (e) {
+          console.warn("Storage quota exceeded, cannot save to all History:", e);
+        }
 
         // Update forecast curves
         AIPredictor.renderForecast();
@@ -2500,18 +2789,28 @@ const initFeatures = () => {
   const originalSubmitReflection = window.submitReflection;
   if (originalSubmitReflection) {
     window.submitReflection = function (outcome) {
-      if (window.focusHistory.length > 0 && window.focusHistory[0].outcome === undefined) {
+      const isPendingReflection = window.focusHistory.length > 0 && window.focusHistory[0].outcome === undefined;
+      let currentEntry = null;
+      if (isPendingReflection) {
         window.focusHistory[0].mood = MoodSystem.selectedMood;
+        currentEntry = window.focusHistory[0];
+      }
 
-        // Persist mood to all-time entry
+      // Call original reflection submission first so that outcome & velocity are updated
+      originalSubmitReflection(outcome);
+
+      if (isPendingReflection && currentEntry) {
+        // BUG-C05 FIX: Match allHistory entry by sessionNum+time instead of assuming index 0
         let allHistory = [];
         try {
           allHistory = JSON.parse(localStorage.getItem(ALL_HISTORY_KEY)) || [];
-          if (allHistory.length > 0) {
-            allHistory[0].mood = MoodSystem.selectedMood;
-            allHistory[0].outcome = outcome;
-            // Recalculate velocity with reflection details
-            allHistory[0].velocity = window.focusHistory[0].velocity;
+          const matchIdx = allHistory.findIndex(h =>
+            h.sessionNum === currentEntry.sessionNum && h.time === currentEntry.time
+          );
+          if (matchIdx !== -1) {
+            allHistory[matchIdx].mood = MoodSystem.selectedMood;
+            allHistory[matchIdx].outcome = currentEntry.outcome; // Updated outcome
+            allHistory[matchIdx].velocity = currentEntry.velocity; // Newly computed velocity
             localStorage.setItem(ALL_HISTORY_KEY, JSON.stringify(allHistory));
           }
         } catch (e) { }
@@ -2525,16 +2824,39 @@ const initFeatures = () => {
         const todayKey = getTodayStr();
         if (!dateMoods[todayKey]) dateMoods[todayKey] = [];
         dateMoods[todayKey].push(MoodSystem.selectedMood);
-        localStorage.setItem(MOODS_KEY, JSON.stringify(dateMoods));
+        try { localStorage.setItem(MOODS_KEY, JSON.stringify(dateMoods)); } catch (e) { }
       }
-
-      // Call original reflection submission
-      originalSubmitReflection(outcome);
 
       // Refresh visuals
       MoodSystem.resetSelection();
       window.renderHeatmap();
       DNASystem.renderStrand();
+
+      // Update Live Cognitive Widget stats dynamically
+      const liveVelocityEl = document.getElementById('live-report-velocity');
+      const liveConsistencyEl = document.getElementById('live-report-consistency');
+      const liveAdviceEl = document.getElementById('live-report-advice');
+      if (liveVelocityEl && liveConsistencyEl) {
+        const hist = window.focusHistory || [];
+        if (hist.length > 0) {
+          let sumVelocity = 0;
+          let completes = 0;
+          hist.forEach(s => {
+            sumVelocity += (s.velocity || 100);
+            if (s.outcome === 'yes') completes++;
+          });
+          const avgVelVal = Math.round(sumVelocity / hist.length);
+          const consVal = Math.round((completes / hist.length) * 100);
+          liveVelocityEl.textContent = `${avgVelVal}%`;
+          liveConsistencyEl.textContent = `${consVal}%`;
+
+          if (avgVelVal >= 80) {
+            liveAdviceEl.textContent = `🎯 Cognitive flow is peak. Your current zone velocity is high. Proceed to next block.`;
+          } else {
+            liveAdviceEl.textContent = `🔋 Focus drift detected. Take a box-breathing prep min to re-establish clean velocity.`;
+          }
+        }
+      }
     };
   }
 
@@ -2565,7 +2887,7 @@ const initFeatures = () => {
           const moods = dateMoods[key];
           const finalMood = moods[moods.length - 1] || 'neutral';
           const moodColor = MOOD_COLORS[finalMood] || '#9ca3af';
-          
+
           cell.style.borderColor = moodColor;
           cell.style.border = `2px solid ${moodColor}`;
           cell.style.backgroundImage = 'none';
@@ -2606,7 +2928,8 @@ const initFeatures = () => {
 
       // Render quote at the moment break triggers
       if (isSessionFocus) {
-        const lastSession = window.history[0];
+        // BUG-004: Fixed collision with native browser History API
+        const lastSession = window.focusHistory[0];
         QuoteOracle.showQuote(lastSession);
       }
 
@@ -2622,6 +2945,17 @@ const initFeatures = () => {
         BreakSuggestions.hide();
       }
     };
+  }
+
+  // BUG-H15 FIX: Resume timer now that all hooks are safely connected.
+  // Clear the fallback timeout from app.js and start once, atomically.
+  if (window._zencloxPendingResume) {
+    window._zencloxPendingResume = false;
+    if (window._zencloxResumeTimeout) {
+      clearTimeout(window._zencloxResumeTimeout);
+      window._zencloxResumeTimeout = null;
+    }
+    setTimeout(() => { if (window.startTimer) window.startTimer(); }, 100);
   }
 };
 

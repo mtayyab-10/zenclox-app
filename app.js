@@ -1,5 +1,24 @@
 'use strict';
 
+// Safe localStorage proxy for Private Browsing support
+const localStorage = (() => {
+  try {
+    window.localStorage.setItem('__test_storage_active__', '1');
+    window.localStorage.removeItem('__test_storage_active__');
+    return window.localStorage;
+  } catch (e) {
+    console.warn("localStorage is blocked or unavailable. Falling back to in-memory storage.");
+    const memStore = {};
+    return {
+      getItem: (k) => memStore[k] || null,
+      setItem: (k, v) => { memStore[k] = String(v); },
+      removeItem: (k) => { delete memStore[k]; },
+      clear: () => { for (const k in memStore) delete memStore[k]; }
+    };
+  }
+})();
+
+
 /* ============================================================
  * CONSTANTS
  * ============================================================ */
@@ -34,8 +53,34 @@ let sessionFresh = true;
 let history = [], interruptions = 0, currentIntention = '', currentTags = [];
 let activeSounds = { rain: false, space: false, fire: false, binaural: false };
 let rainSynth = null, spaceSynth = null, fireSynth = null, binauralSynth = null;
+let fadingSynths = { rain: null, space: null, fire: null, binaural: null };
 let audioCtx = null;
 let mainFilterNode = null;
+
+let wakeLock = null;
+async function requestWakeLock() {
+  if ('wakeLock' in navigator) {
+    try {
+      if (!wakeLock) {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => {
+          wakeLock = null;
+        });
+      }
+    } catch (err) {
+      console.warn(`Wake Lock request failed: ${err.name}, ${err.message}`);
+    }
+  }
+}
+function releaseWakeLock() {
+  if (wakeLock) {
+    wakeLock.release().then(() => {
+      wakeLock = null;
+    }).catch(err => {
+      console.warn(`Wake Lock release failed: ${err.name}, ${err.message}`);
+    });
+  }
+}
 
 // Expose internal state variables to window for other scripts (e.g. features.js)
 Object.defineProperty(window, 'isFocus', { get: () => isFocus, set: (v) => { isFocus = v; } });
@@ -45,6 +90,8 @@ Object.defineProperty(window, 'remaining', { get: () => remaining, set: (v) => {
 Object.defineProperty(window, 'focusHistory', { get: () => history, set: (v) => { history = v; } });
 Object.defineProperty(window, 'activeSounds', { get: () => activeSounds, set: (v) => { activeSounds = v; } });
 Object.defineProperty(window, 'currentTags', { get: () => currentTags, set: (v) => { currentTags = v; } });
+Object.defineProperty(window, 'focusMins', { get: () => focusMins, set: (v) => { focusMins = v; } });
+Object.defineProperty(window, 'breakMins', { get: () => breakMins, set: (v) => { breakMins = v; } });
 
 
 // New upgrades state
@@ -52,6 +99,9 @@ let isBreathing = false;
 let breathingInterval = null;
 let breathingCycleSeconds = 0;
 let breathToggleEnabled = false;
+// BUG-H02 FIX: Module-scope references for breathing audio so cancelBreathingMode can stop them
+let _breathOsc = null;
+let _breathGain = null;
 
 let isFlowShield = false;
 let shieldCanvas = null;
@@ -65,6 +115,9 @@ let shieldMouseX = null;
 let shieldMouseY = null;
 let shieldMouseMoveHandler = null;
 let shieldMouseLeaveHandler = null;
+
+// BUG-C01 FIX: Guard flag to prevent double onCycleEnd from visibility+interval race
+let _cycleEndFired = false;
 
 let currentChartType = 'tags'; // 'tags' or 'velocity'
 
@@ -167,13 +220,36 @@ function getCtx() {
       console.warn("Failed to initialize main muffle filter:", e);
     }
   }
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume().catch(err => {
+      console.warn("AudioContext resume failed (user interaction required):", err);
+    });
+  }
   return audioCtx;
 }
+// BUG-C03 FIX: Export getCtx to window for features.js access
+window.getCtx = getCtx;
+
+// BUG-M18 FIX: Unified robust HTML escaping utility
+function esc(s) {
+  if (!s) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+window.esc = esc;
 
 function updateFilterMode() {
   if (!audioCtx || !mainFilterNode) return;
-  const targetFreq = isRunning ? 20000 : 350; // 20kHz when running, 350Hz when paused
+  // BUG-M02 FIX: Skip filter updates if no sounds are active and we are paused
+  const hasActiveSounds = Object.values(activeSounds).some(Boolean);
+  if (!hasActiveSounds && !isRunning) return;
+  
+  // BUG-H03 FIX: Changed from 350Hz to 1200Hz — less aggressive muffle that still signals "paused" without making sounds inaudible
+  const targetFreq = isRunning ? 20000 : 1200;
   try {
     mainFilterNode.frequency.exponentialRampToValueAtTime(targetFreq, audioCtx.currentTime + 0.6);
   } catch (e) {
@@ -188,6 +264,12 @@ function playTone(freq, dur, type = 'sine', vol = 0.38) {
   gain.gain.setValueAtTime(vol, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
   osc.start(); osc.stop(ctx.currentTime + dur);
+  setTimeout(() => {
+    try {
+      osc.disconnect();
+      gain.disconnect();
+    } catch(_) {}
+  }, (dur + 0.1) * 1000);
 }
 function playFocusComplete() { [523.25,659.25,783.99].forEach((f,i) => setTimeout(() => playTone(f,0.5,'sine',0.33), i*180)); }
 function playBreakComplete()  { [440,523.25].forEach((f,i) => setTimeout(() => playTone(f,0.5,'triangle',0.26), i*200)); }
@@ -226,9 +308,35 @@ function createRainSynth(ctx, vol) {
 
   return {
     setVolume(v) { master.gain.linearRampToValueAtTime(v, ctx.currentTime + 0.4); },
-    stop() {
-      master.gain.linearRampToValueAtTime(0, ctx.currentTime + 2);
-      setTimeout(() => { try { noise.stop(); lfo.stop(); } catch(_) {} }, 2200);
+    stop(instant = false) {
+      if (instant) {
+        try {
+          noise.stop();
+          lfo.stop();
+          noise.disconnect();
+          lfo.disconnect();
+          lfoG.disconnect();
+          bp.disconnect();
+          hp.disconnect();
+          ls.disconnect();
+          master.disconnect();
+        } catch(_) {}
+      } else {
+        master.gain.linearRampToValueAtTime(0, ctx.currentTime + 2);
+        setTimeout(() => {
+          try {
+            noise.stop();
+            lfo.stop();
+            noise.disconnect();
+            lfo.disconnect();
+            lfoG.disconnect();
+            bp.disconnect();
+            hp.disconnect();
+            ls.disconnect();
+            master.disconnect();
+          } catch(_) {}
+        }, 2200);
+      }
     },
   };
 }
@@ -264,15 +372,45 @@ function createSpaceSynth(ctx, vol) {
     al.connect(ag); ag.connect(og.gain); al.start(ctx.currentTime + i*0.5);
     osc.connect(og); og.connect(master); og.connect(delay);
     osc.start(ctx.currentTime + i*0.2);
-    oscs.push({ osc, pl, al });
+    oscs.push({ osc, pl, al, og, pg, ag });
   });
   master.connect(mainFilterNode || ctx.destination);
 
   return {
     setVolume(v) { master.gain.linearRampToValueAtTime(v, ctx.currentTime + 0.5); },
-    stop() {
-      master.gain.linearRampToValueAtTime(0, ctx.currentTime + 4);
-      setTimeout(() => oscs.forEach(({ osc, pl, al }) => { try { osc.stop(); pl.stop(); al.stop(); } catch(_) {} }), 4500);
+    stop(instant = false) {
+      if (instant) {
+        oscs.forEach(({ osc, pl, al, og, pg, ag }) => {
+          try {
+            osc.stop(); pl.stop(); al.stop();
+            osc.disconnect(); pl.disconnect(); al.disconnect();
+            og.disconnect(); pg.disconnect(); ag.disconnect();
+          } catch(_) {}
+        });
+        try {
+          delay.disconnect();
+          fb.disconnect();
+          dlpf.disconnect();
+          master.disconnect();
+        } catch(_) {}
+      } else {
+        master.gain.linearRampToValueAtTime(0, ctx.currentTime + 4);
+        setTimeout(() => {
+          oscs.forEach(({ osc, pl, al, og, pg, ag }) => {
+            try {
+              osc.stop(); pl.stop(); al.stop();
+              osc.disconnect(); pl.disconnect(); al.disconnect();
+              og.disconnect(); pg.disconnect(); ag.disconnect();
+            } catch(_) {}
+          });
+          try {
+            delay.disconnect();
+            fb.disconnect();
+            dlpf.disconnect();
+            master.disconnect();
+          } catch(_) {}
+        }, 4500);
+      }
     },
   };
 }
@@ -345,10 +483,34 @@ function createFireplaceSynth(ctx, vol) {
 
   return {
     setVolume(v) { master.gain.linearRampToValueAtTime(v, ctx.currentTime + 0.4); },
-    stop() {
-      master.gain.linearRampToValueAtTime(0, ctx.currentTime + 2);
+    stop(instant = false) {
       if (crackleTimeout) { clearTimeout(crackleTimeout); crackleTimeout = null; }
-      setTimeout(() => { try { rumbleSource.stop(); rumbleLFO.stop(); } catch(_) {} }, 2200);
+      if (instant) {
+        try {
+          rumbleSource.stop(); rumbleLFO.stop();
+          rumbleSource.disconnect();
+          rumbleFilter.disconnect();
+          rumbleGain.disconnect();
+          rumbleLFO.disconnect();
+          rumbleLFOGain.disconnect();
+          bp.disconnect();
+          master.disconnect();
+        } catch(_) {}
+      } else {
+        master.gain.linearRampToValueAtTime(0, ctx.currentTime + 2);
+        setTimeout(() => {
+          try {
+            rumbleSource.stop(); rumbleLFO.stop();
+            rumbleSource.disconnect();
+            rumbleFilter.disconnect();
+            rumbleGain.disconnect();
+            rumbleLFO.disconnect();
+            rumbleLFOGain.disconnect();
+            bp.disconnect();
+            master.disconnect();
+          } catch(_) {}
+        }, 2200);
+      }
     }
   };
 }
@@ -413,9 +575,37 @@ function createBinauralSynth(ctx, beatFreq, vol) {
 
   return {
     setVolume(v) { master.gain.linearRampToValueAtTime(v, ctx.currentTime + 0.4); },
-    stop() {
-      master.gain.linearRampToValueAtTime(0, ctx.currentTime + 2);
-      setTimeout(() => { try { oscL.stop(); oscR.stop(); oscSub.stop(); noise.stop(); } catch(_) {} }, 2200);
+    stop(instant = false) {
+      if (instant) {
+        try {
+          oscL.stop(); oscR.stop(); oscSub.stop(); noise.stop();
+          oscL.disconnect(); oscR.disconnect(); oscSub.disconnect(); noise.disconnect();
+          if (panL) panL.disconnect();
+          gainL.disconnect();
+          if (panR) panR.disconnect();
+          gainR.disconnect();
+          gainSub.disconnect();
+          noiseFilter.disconnect();
+          noiseGain.disconnect();
+          master.disconnect();
+        } catch(_) {}
+      } else {
+        master.gain.linearRampToValueAtTime(0, ctx.currentTime + 2);
+        setTimeout(() => {
+          try {
+            oscL.stop(); oscR.stop(); oscSub.stop(); noise.stop();
+            oscL.disconnect(); oscR.disconnect(); oscSub.disconnect(); noise.disconnect();
+            if (panL) panL.disconnect();
+            gainL.disconnect();
+            if (panR) panR.disconnect();
+            gainR.disconnect();
+            gainSub.disconnect();
+            noiseFilter.disconnect();
+            noiseGain.disconnect();
+            master.disconnect();
+          } catch(_) {}
+        }, 2200);
+      }
     }
   };
 }
@@ -439,10 +629,15 @@ function updateSoundUI() {
     if (btn) {
       btn.setAttribute('aria-pressed', isPlaying ? 'true' : 'false');
       btn.classList.toggle('sound-playing', isPlaying);
+      // BUG-024: JS fallback for :has() — toggle active class on parent mixer-row
+      const row = btn.closest('.mixer-row');
+      if (row) row.classList.toggle('mixer-row-active', isPlaying);
     }
     if (popoverBtn) {
       popoverBtn.setAttribute('aria-pressed', isPlaying ? 'true' : 'false');
       popoverBtn.classList.toggle('sound-playing', isPlaying);
+      const popRow = popoverBtn.closest('.popover-row');
+      if (popRow) popRow.classList.toggle('mixer-row-active', isPlaying);
     }
   });
 }
@@ -451,17 +646,29 @@ function startAmbientSound(type) {
   const ctx = getCtx();
   if (activeSounds[type]) {
     activeSounds[type] = false;
-    if (type === 'rain') { rainSynth?.stop(); rainSynth = null; }
-    if (type === 'space') { spaceSynth?.stop(); spaceSynth = null; }
-    if (type === 'fire') { fireSynth?.stop(); fireSynth = null; }
-    if (type === 'binaural') { binauralSynth?.stop(); binauralSynth = null; }
+    if (type === 'rain') { if (rainSynth) { rainSynth.stop(); fadingSynths.rain = rainSynth; rainSynth = null; } }
+    if (type === 'space') { if (spaceSynth) { spaceSynth.stop(); fadingSynths.space = spaceSynth; spaceSynth = null; } }
+    if (type === 'fire') { if (fireSynth) { fireSynth.stop(); fadingSynths.fire = fireSynth; fireSynth = null; } }
+    if (type === 'binaural') { if (binauralSynth) { binauralSynth.stop(); fadingSynths.binaural = binauralSynth; binauralSynth = null; } }
   } else {
     activeSounds[type] = true;
     const v = ambientVol(type);
-    if (type === 'rain')  rainSynth  = createRainSynth(ctx, v);
-    if (type === 'space') spaceSynth = createSpaceSynth(ctx, v);
-    if (type === 'fire')  fireSynth  = createFireplaceSynth(ctx, v);
-    if (type === 'binaural') binauralSynth = createBinauralSynth(ctx, isFocus ? 15 : 8, v);
+    if (type === 'rain') {
+      if (fadingSynths.rain) { fadingSynths.rain.stop(true); fadingSynths.rain = null; }
+      rainSynth = createRainSynth(ctx, v);
+    }
+    if (type === 'space') {
+      if (fadingSynths.space) { fadingSynths.space.stop(true); fadingSynths.space = null; }
+      spaceSynth = createSpaceSynth(ctx, v);
+    }
+    if (type === 'fire') {
+      if (fadingSynths.fire) { fadingSynths.fire.stop(true); fadingSynths.fire = null; }
+      fireSynth = createFireplaceSynth(ctx, v);
+    }
+    if (type === 'binaural') {
+      if (fadingSynths.binaural) { fadingSynths.binaural.stop(true); fadingSynths.binaural = null; }
+      binauralSynth = createBinauralSynth(ctx, isFocus ? 15 : 8, v);
+    }
   }
   saveSoundPref();
   updateSoundUI();
@@ -475,17 +682,26 @@ function resumeAmbientIfNeeded() {
       if (type === 'rain' && !rainSynth)  rainSynth  = createRainSynth(ctx, v);
       if (type === 'space' && !spaceSynth) spaceSynth = createSpaceSynth(ctx, v);
       if (type === 'fire' && !fireSynth)  fireSynth  = createFireplaceSynth(ctx, v);
-      if (type === 'binaural' && !binauralSynth) binauralSynth = createBinauralSynth(ctx, isFocus ? 15 : 8, v);
+      if (type === 'binaural') {
+        // BUG-M04 FIX: Recreate binaural beat frequency when mode changes (15 for focus, 8 for break)
+        const targetFreq = isFocus ? 15 : 8;
+        if (!binauralSynth) {
+          binauralSynth = createBinauralSynth(ctx, targetFreq, v);
+        } else {
+          binauralSynth.stop(true);
+          binauralSynth = createBinauralSynth(ctx, targetFreq, v);
+        }
+      }
     }
   });
   updateSoundUI();
 }
 
 function stopAllAmbient() {
-  if (rainSynth) { rainSynth.stop(); rainSynth = null; }
-  if (spaceSynth) { spaceSynth.stop(); spaceSynth = null; }
-  if (fireSynth) { fireSynth.stop(); fireSynth = null; }
-  if (binauralSynth) { binauralSynth.stop(); binauralSynth = null; }
+  if (rainSynth) { rainSynth.stop(); fadingSynths.rain = rainSynth; rainSynth = null; }
+  if (spaceSynth) { spaceSynth.stop(); fadingSynths.space = spaceSynth; spaceSynth = null; }
+  if (fireSynth) { fireSynth.stop(); fadingSynths.fire = fireSynth; fireSynth = null; }
+  if (binauralSynth) { binauralSynth.stop(); fadingSynths.binaural = binauralSynth; binauralSynth = null; }
 }
 
 function updateAmbientVolume() {
@@ -501,15 +717,19 @@ function updateAmbientVolume() {
 }
 
 function saveSoundPref() {
+  // BUG-C02 FIX: Add null guards before accessing slider.value
   const volumes = {};
   ['rain', 'space', 'fire', 'binaural'].forEach(t => {
-    volumes[t] = $(`slider-${t}`).value;
+    const el = $(`slider-${t}`);
+    volumes[t] = el ? el.value : '40';
   });
-  localStorage.setItem(SOUND_KEY, JSON.stringify({
-    activeSounds,
-    soundVolumes: volumes,
-    masterVolume: dom.volumeSlider.value
-  }));
+  try {
+    localStorage.setItem(SOUND_KEY, JSON.stringify({
+      activeSounds,
+      soundVolumes: volumes,
+      masterVolume: dom.volumeSlider ? dom.volumeSlider.value : '50'
+    }));
+  } catch(_) {}
 }
 
 function loadSoundPref() {
@@ -532,7 +752,11 @@ function loadSoundPref() {
       activeSounds = p.activeSounds;
       updateSoundUI();
     }
-  } catch(_) {}
+  } catch(e) {
+    // BUG-M20 FIX: log warning and clear corrupted sound preferences key
+    console.warn("Failed to load sound preferences (potential corruption):", e);
+    try { localStorage.removeItem(SOUND_KEY); } catch(_) {}
+  }
 }
 
 /* ============================================================
@@ -546,7 +770,8 @@ function startBreathingMode() {
   document.body.classList.add('breath-mode-active');
   dom.interruptionRow.hidden = true;
   dom.modeLabel.textContent = 'Prep';
-  dom.timerDisplay.textContent = '01:00';
+  dom.timerDisplay.textContent = '01:04';
+  requestWakeLock();
   
   const breathSteps = [
     { text: 'Breathe In', duration: 4 },
@@ -555,20 +780,22 @@ function startBreathingMode() {
     { text: 'Hold (Empty)', duration: 4 }
   ];
   
-  let remainingBreathSeconds = 64; // 4 cycles
+  const breathStartTime = Date.now();
+  const breathDuration = 64; // 4 cycles
   
-  let breathOsc = null;
-  let breathGain = null;
+  // BUG-H02 FIX: Use module-scope _breathOsc/_breathGain so cancelBreathingMode can stop them
+  _breathOsc = null;
+  _breathGain = null;
   try {
     const ctx = getCtx();
-    breathOsc = ctx.createOscillator();
-    breathGain = ctx.createGain();
-    breathOsc.type = 'sine';
-    breathOsc.frequency.value = 110; // Low grounding frequency
-    breathGain.gain.value = 0;
-    breathOsc.connect(breathGain);
-    breathGain.connect(ctx.destination);
-    breathOsc.start();
+    _breathOsc = ctx.createOscillator();
+    _breathGain = ctx.createGain();
+    _breathOsc.type = 'sine';
+    _breathOsc.frequency.value = 110; // Low grounding frequency
+    _breathGain.gain.value = 0;
+    _breathOsc.connect(_breathGain);
+    _breathGain.connect(ctx.destination);
+    _breathOsc.start();
   } catch(e) {}
   
   function tickBreathing() {
@@ -576,6 +803,9 @@ function startBreathingMode() {
       cleanUpBreathing();
       return;
     }
+    
+    const elapsed = Math.floor((Date.now() - breathStartTime) / 1000);
+    const remainingBreathSeconds = Math.max(0, breathDuration - elapsed);
     
     const cycleSec = (64 - remainingBreathSeconds) % 16;
     let stepIndex = 0;
@@ -591,52 +821,64 @@ function startBreathingMode() {
     
     const step = breathSteps[stepIndex];
     dom.timerSub.textContent = step.text;
-    dom.timerDisplay.textContent = `00:${String(remainingBreathSeconds).padStart(2, '0')}`;
+    // BUG-H01 FIX: Use fmt() for proper MM:SS display instead of raw seconds
+    dom.timerDisplay.textContent = fmt(remainingBreathSeconds);
     
     // Auditory breath sweeps
-    if (breathOsc && breathGain) {
+    if (_breathOsc && _breathGain) {
       const now = audioCtx.currentTime;
       if (stepIndex === 0) { // Inhale
-        breathGain.gain.linearRampToValueAtTime(0.18, now + 0.9);
-        breathOsc.frequency.linearRampToValueAtTime(170, now + 0.9);
+        _breathGain.gain.linearRampToValueAtTime(0.18, now + 0.9);
+        _breathOsc.frequency.linearRampToValueAtTime(170, now + 0.9);
         document.body.style.setProperty('--breath-duration', '4s');
       } else if (stepIndex === 1) { // Hold Full
-        breathGain.gain.linearRampToValueAtTime(0.18, now + 0.9);
-        breathOsc.frequency.linearRampToValueAtTime(170, now + 0.9);
+        _breathGain.gain.linearRampToValueAtTime(0.18, now + 0.9);
+        _breathOsc.frequency.linearRampToValueAtTime(170, now + 0.9);
       } else if (stepIndex === 2) { // Exhale
-        breathGain.gain.linearRampToValueAtTime(0.01, now + 0.9);
-        breathOsc.frequency.linearRampToValueAtTime(110, now + 0.9);
+        _breathGain.gain.linearRampToValueAtTime(0.01, now + 0.9);
+        _breathOsc.frequency.linearRampToValueAtTime(110, now + 0.9);
       } else { // Hold Empty
-        breathGain.gain.linearRampToValueAtTime(0, now + 0.9);
+        _breathGain.gain.linearRampToValueAtTime(0, now + 0.9);
       }
     }
     
-    const offset = CIRCUMFERENCE * (remainingBreathSeconds / 64);
+    const offset = CIRCUMFERENCE * (1 - remainingBreathSeconds / 64);
     dom.ringProgress.style.strokeDashoffset = offset;
     
-    remainingBreathSeconds--;
-    if (remainingBreathSeconds < 0) {
+    if (remainingBreathSeconds <= 0) {
       cleanUpBreathing();
       isBreathing = false;
       document.body.classList.remove('breath-mode-active');
       dom.modeLabel.textContent = 'Focus';
+      const savedIntention = currentIntention;
+      const savedTags = [...currentTags];
       setMode(true);
+      currentIntention = savedIntention;
+      currentTags = savedTags;
       startTimer();
     } else {
-      breathingInterval = setTimeout(tickBreathing, 1000);
+      const nextTickDelay = 1000 - ((Date.now() - breathStartTime) % 1000);
+      breathingInterval = setTimeout(tickBreathing, nextTickDelay);
     }
   }
   
   function cleanUpBreathing() {
-    if (breathingInterval) clearTimeout(breathingInterval);
-    if (breathOsc) {
+    if (breathingInterval) { clearTimeout(breathingInterval); breathingInterval = null; }
+    // BUG-H02 FIX: Clean up module-scope breath oscillator
+    if (_breathOsc) {
       try {
-        breathOsc.stop();
-        breathOsc.disconnect();
+        _breathOsc.stop();
+        _breathOsc.disconnect();
       } catch(e) {}
+      _breathOsc = null;
+    }
+    if (_breathGain) {
+      try { _breathGain.disconnect(); } catch(e) {}
+      _breathGain = null;
     }
     document.body.classList.remove('breath-mode-active');
     document.body.style.removeProperty('--breath-duration');
+    releaseWakeLock();
   }
   
   tickBreathing();
@@ -645,10 +887,27 @@ function startBreathingMode() {
 function cancelBreathingMode() {
   if (!isBreathing) return;
   isBreathing = false;
-  if (breathingInterval) clearTimeout(breathingInterval);
+  if (breathingInterval) { clearTimeout(breathingInterval); breathingInterval = null; }
+  // BUG-H02 FIX: Stop the breathing oscillator that was previously leaked
+  if (_breathOsc) {
+    try {
+      _breathOsc.stop();
+      _breathOsc.disconnect();
+    } catch(e) {}
+    _breathOsc = null;
+  }
+  if (_breathGain) {
+    try { _breathGain.disconnect(); } catch(e) {}
+    _breathGain = null;
+  }
   document.body.classList.remove('breath-mode-active');
   document.body.style.removeProperty('--breath-duration');
+  releaseWakeLock();
+  const savedIntention = currentIntention;
+  const savedTags = [...currentTags];
   setMode(true);
+  currentIntention = savedIntention;
+  currentTags = savedTags;
 }
 
 // 2. Flow Shield Cinema Mode
@@ -667,6 +926,18 @@ function toggleFlowShield() {
 }
 
 function initShieldCanvas() {
+  // BUG-H04/H14 FIX: Clean up existing animation loop and listeners before re-init
+  if (shieldAnimId) { cancelAnimationFrame(shieldAnimId); shieldAnimId = null; }
+  window.removeEventListener('resize', resizeShieldCanvas);
+  if (shieldMouseMoveHandler) {
+    window.removeEventListener('mousemove', shieldMouseMoveHandler);
+    shieldMouseMoveHandler = null;
+  }
+  if (shieldMouseLeaveHandler) {
+    window.removeEventListener('mouseleave', shieldMouseLeaveHandler);
+    shieldMouseLeaveHandler = null;
+  }
+
   shieldCanvas = $('flow-shield-canvas');
   if (!shieldCanvas) return;
   shieldCtx = shieldCanvas.getContext('2d');
@@ -838,6 +1109,11 @@ function stopShieldCanvas() {
     window.removeEventListener('mouseleave', shieldMouseLeaveHandler);
     shieldMouseLeaveHandler = null;
   }
+  // BUG-L06 FIX: Clear pending shieldMouseTimeout to avoid background leaks
+  if (window.shieldMouseTimeout) {
+    clearTimeout(window.shieldMouseTimeout);
+    window.shieldMouseTimeout = null;
+  }
   shieldMouseX = null;
   shieldMouseY = null;
 }
@@ -933,12 +1209,16 @@ function initDriftTracking() {
       }
     } else {
       // Returning to document
+      if (isRunning || isBreathing) {
+        requestWakeLock();
+      }
       if (isRunning && startTime) {
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
         remaining = Math.max(0, startRemaining - elapsed);
         updateDisplay();
         
-        if (remaining <= 0) {
+        // BUG-C01 FIX: Check _cycleEndFired guard to prevent double onCycleEnd
+        if (remaining <= 0 && !_cycleEndFired) {
           if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
           isRunning = false;
           onCycleEnd();
@@ -996,10 +1276,6 @@ function updateDailyVelocity() {
 }
 
 function renderAnalytics() {
-  if (history.length === 0) {
-    dom.analyticsSection.hidden = true;
-    return;
-  }
   dom.analyticsSection.hidden = false;
   
   if (currentChartType === 'tags') {
@@ -1106,6 +1382,7 @@ function renderVelocityTrend() {
   }
   
   const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  // BUG-L07 FIX/Mitigation: Make sure defs is added cleanly
   defs.innerHTML = `
     <linearGradient id="chart-gradient" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="var(--active)" stop-opacity="0.3"/>
@@ -1125,17 +1402,28 @@ function renderVelocityTrend() {
     points.push({ x, y, hasScore, score: scoreVal, dayName: day.dayName });
   });
   
-  const scoredPoints = points.filter(p => p.hasScore);
+  let scoredPoints = points.filter(p => p.hasScore);
+  if (scoredPoints.length === 0) {
+    // If no history exists, default to flat 0 line instead of leaving blank
+    points.forEach(p => {
+      p.hasScore = true;
+      p.score = 0;
+      p.y = 98;
+    });
+    scoredPoints = points;
+  }
+  
   if (scoredPoints.length > 0) {
     let areaPathD = '';
     let linePathD = '';
     
-    points.forEach((p, idx) => {
+    // BUG-M06 FIX: Connect only valid scoredPoints instead of all points
+    scoredPoints.forEach((p, idx) => {
       const command = idx === 0 ? 'M' : 'L';
       linePathD += `${command} ${p.x} ${p.y} `;
     });
     
-    areaPathD = linePathD + `L ${points[points.length-1].x} 115 L ${points[0].x} 115 Z`;
+    areaPathD = linePathD + `L ${scoredPoints[scoredPoints.length-1].x} 115 L ${scoredPoints[0].x} 115 Z`;
     
     const area = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     area.setAttribute('class', 'chart-area');
@@ -1178,7 +1466,11 @@ function renderVelocityTrend() {
 function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   localStorage.setItem(THEME_KEY, theme);
-  document.querySelectorAll('.theme-dot').forEach(b => b.classList.toggle('active', b.dataset.theme === theme));
+  document.querySelectorAll('.theme-dot').forEach(b => {
+    const isActive = b.dataset.theme === theme;
+    b.classList.toggle('active', isActive);
+    b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  });
   document.dispatchEvent(new CustomEvent('themechange', { detail: { theme } }));
 }
 
@@ -1188,22 +1480,22 @@ function applyTheme(theme) {
 let faviconCanvas, faviconCtx2d;
 function initFavicon() {
   faviconCanvas = document.createElement('canvas');
-  faviconCanvas.width = faviconCanvas.height = 32;
+  faviconCanvas.width = faviconCanvas.height = 64;
   faviconCtx2d = faviconCanvas.getContext('2d');
 }
 function updateFavicon() {
   if (!faviconCtx2d) return;
-  const ctx = faviconCtx2d, s = 32, cx = 16, cy = 16, r = 12;
+  const ctx = faviconCtx2d, s = 64, cx = 32, cy = 32, r = 24;
   const progress = remaining / totalSecs;
   const col = getComputedStyle(document.documentElement).getPropertyValue('--active').trim() || '#c084fc';
   ctx.clearRect(0, 0, s, s);
   ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2);
-  ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 3.5; ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 7; ctx.stroke();
   if (progress > 0) {
     ctx.beginPath(); ctx.arc(cx,cy,r,-Math.PI/2,-Math.PI/2+Math.PI*2*progress);
-    ctx.strokeStyle = col; ctx.lineWidth = 3.5; ctx.lineCap = 'round'; ctx.stroke();
+    ctx.strokeStyle = col; ctx.lineWidth = 7; ctx.lineCap = 'round'; ctx.stroke();
   }
-  ctx.beginPath(); ctx.arc(cx,cy,3,0,Math.PI*2);
+  ctx.beginPath(); ctx.arc(cx,cy,6,0,Math.PI*2);
   ctx.fillStyle = col; ctx.fill();
   dom.faviconLink.href = faviconCanvas.toDataURL();
 }
@@ -1225,14 +1517,20 @@ function updateDisplay() {
   if (window.updateZenColors) window.updateZenColors();
 }
 
-function saveTimerState() {
+function saveTimerState(force = false) {
+  const now = Date.now();
+  // BUG-M31 FIX: Throttle localStorage writes to at most once per 950ms unless forced
+  if (!force && (now - _lastStateSaveTime < 950)) return;
+  _lastStateSaveTime = now;
   try {
     localStorage.setItem(STATE_KEY, JSON.stringify({
       remaining, totalSecs, isFocus, sessionNum, focusMins, breakMins,
-      interruptions, currentIntention, savedAt: Date.now(), wasRunning: isRunning,
+      interruptions, currentIntention, savedAt: now, wasRunning: isRunning,
+      driftsCount // BUG-L02 FIX: Save driftsCount in state
     }));
   } catch(_) {}
 }
+let _lastStateSaveTime = 0;
 
 function restoreTimerState() {
   try {
@@ -1245,9 +1543,85 @@ function restoreTimerState() {
     sessionNum = s.sessionNum || 1;
     totalSecs = s.totalSecs || focusMins * 60;
     interruptions = s.interruptions || 0;
+    driftsCount = s.driftsCount || 0; // BUG-L02 FIX: Restore driftsCount in state recovery
     currentIntention = s.currentIntention || '';
     const adj = s.wasRunning ? Math.max(0, s.remaining - Math.floor(age / 1000)) : s.remaining;
-    if (adj <= 0) { localStorage.removeItem(STATE_KEY); return false; }
+    
+    // BUG-038 & BUG-033: Handle offline completed focus session recovery
+    if (adj <= 0) {
+      if (s.isFocus) {
+        const durSecs = s.focusMins * 60;
+        const completedTime = new Date(s.savedAt + s.remaining * 1000);
+        const h = completedTime.getHours(), m = String(completedTime.getMinutes()).padStart(2, '0');
+        const ampm = h >= 12 ? 'pm' : 'am', h12 = h % 12 || 12;
+        const timeStr = `${h12}:${m}${ampm}`;
+        
+        // BUG-C04 FIX: extractTags already returns tags WITH '#' prefix (e.g. '#coding'),
+        // so do NOT wrap again with '#${t}' — just use them directly
+        const extractedTags = extractTags(s.currentIntention);
+        const initialVelocity = s.currentIntention ? 100 : calculateFlowVelocity(durSecs, s.interruptions, 0, 'none');
+        
+        const newEntry = {
+          duration: durSecs,
+          time: timeStr,
+          interrupts: s.interruptions,
+          drifts: s.driftsCount || 0, // BUG-L02 FIX: Restore recovered drifts
+          intention: s.currentIntention,
+          outcome: s.currentIntention ? undefined : 'none',
+          velocity: initialVelocity,
+          tags: extractedTags,
+          sessionNum: s.sessionNum
+        };
+        
+        if (!history || history.length === 0) {
+          try { history = JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(_) { history = []; }
+        }
+        
+        // BUG-H12 FIX: Use savedAt timestamp for stronger deduplication across day boundaries
+        const duplicate = history.some(item =>
+          item.sessionNum === s.sessionNum && item.time === timeStr
+        ) || (s.savedAt && history.some(item => item._savedAt === s.savedAt));
+        if (!duplicate) {
+          newEntry._savedAt = s.savedAt; // Attach for future dedup
+          newEntry.date = todayStr();
+          history.unshift(newEntry);
+          saveHistory();
+          renderHistory();
+          renderAnalytics();
+          try {
+            const allHist = JSON.parse(localStorage.getItem('zenclox_all_history_v1')) || [];
+            // Dedup by savedAt timestamp which is unique per session
+            const existingTimestamps = new Set(allHist.map(h => h._savedAt).filter(Boolean));
+            if (!existingTimestamps.has(s.savedAt)) {
+              newEntry.mood = 'good';
+              allHist.unshift(newEntry);
+              try { localStorage.setItem('zenclox_all_history_v1', JSON.stringify(allHist)); } catch(_) {}
+            }
+          } catch(_) {}
+        }
+        
+        isFocus = false;
+        sessionNum = s.sessionNum + 1;
+        totalSecs = breakMins * 60;
+        remaining = totalSecs;
+        interruptions = 0;
+        driftsCount = 0;
+        currentIntention = '';
+        currentTags = [];
+        saveTimerState();
+      } else {
+        isFocus = true;
+        totalSecs = focusMins * 60;
+        remaining = totalSecs;
+        interruptions = 0;
+        driftsCount = 0;
+        currentIntention = '';
+        currentTags = [];
+        saveTimerState();
+      }
+      return false;
+    }
+    
     remaining = adj;
     dom.focusVal.value = focusMins;
     dom.breakVal.value = breakMins;
@@ -1258,6 +1632,8 @@ function restoreTimerState() {
 function startTimer() {
   if (isRunning) return;
   isRunning = true; sessionFresh = false;
+  // BUG-C01 FIX: Reset cycle-end guard at the start of every new timer run
+  _cycleEndFired = false;
   resumeAmbientIfNeeded();
   updateFilterMode();
   dom.iconPlay.style.display  = 'none';
@@ -1266,6 +1642,7 @@ function startTimer() {
   dom.modeDot.classList.add('pulsing');
   dom.startBtn.setAttribute('aria-label', 'Pause timer');
   if (isFocus) dom.interruptionRow.hidden = false;
+  requestWakeLock();
   
   startTime = Date.now();
   startRemaining = remaining;
@@ -1290,7 +1667,8 @@ function startTimer() {
         }
       }
     }
-    if (remaining <= 0) {
+    // BUG-C01 FIX: Guard interval path too — only fire once
+    if (remaining <= 0 && !_cycleEndFired) {
       clearInterval(timerInterval);
       timerInterval = null;
       isRunning = false;
@@ -1310,7 +1688,8 @@ function pauseTimer() {
   dom.timerDisplay.classList.add('paused');
   dom.modeDot.classList.remove('pulsing');
   dom.startBtn.setAttribute('aria-label', 'Resume timer');
-  saveTimerState();
+  saveTimerState(true); // force save
+  releaseWakeLock();
 }
 
 function resetTimer() {
@@ -1342,6 +1721,11 @@ function setMode(focus) {
   dom.interruptCount.textContent = '0';
   updateDisplay();
   updateVelocity();
+  // BUG-013/014: Hide stale break suggestion and quote when switching modes
+  const bsCard = document.getElementById('break-suggestion-card');
+  if (bsCard) bsCard.setAttribute('hidden', '');
+  const quoteEl = document.getElementById('quote-display');
+  if (quoteEl) quoteEl.style.display = 'none';
 }
 
 /* ============================================================
@@ -1422,9 +1806,17 @@ function populateRecentTags() {
     const span = document.createElement('span');
     span.className = 'tag-chip';
     span.textContent = `#${tag}`;
+    span.setAttribute('tabindex', '0');
+    span.setAttribute('role', 'button');
     span.addEventListener('click', () => {
       span.classList.toggle('selected');
       updateTagsFromChips();
+    });
+    span.addEventListener('keydown', (e) => {
+      if (e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault();
+        span.click();
+      }
     });
     dom.intentionRecentTags.appendChild(span);
   });
@@ -1469,6 +1861,11 @@ function showReflectionModal() {
     dom.reflGoal.hidden = true;
   }
   dom.reflOverlay.hidden = false;
+  // Focus the first button in reflection modal for accessibility
+  setTimeout(() => {
+    const defaultBtn = document.getElementById('reflect-yes');
+    if (defaultBtn) defaultBtn.focus();
+  }, 50);
 }
 function hideReflectionModal() { dom.reflOverlay.hidden = true; }
 function submitReflection(outcome) {
@@ -1502,12 +1899,16 @@ function logInterruption() {
 
 /* Cycle end */
 function onCycleEnd() {
+  // BUG-C01 FIX: Set guard flag so the second caller (visibility or interval) is blocked
+  if (_cycleEndFired) return;
+  _cycleEndFired = true;
   updateFilterMode();
   if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
   dom.modeDot.classList.remove('pulsing');
   dom.interruptionRow.hidden = true;
   dom.iconPlay.style.display = ''; dom.iconPause.style.display = 'none';
   dom.startBtn.setAttribute('aria-label', 'Start timer');
+  releaseWakeLock();
 
   if (isFocus) {
     playFocusComplete();
@@ -1547,10 +1948,26 @@ function todayStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
+// BUG-M17 FIX: Export todayStr to window for features.js
+window.todayStr = todayStr;
 
 function loadHistory() {
   const saved = localStorage.getItem(TODAY_KEY), today = todayStr();
   if (saved !== today) {
+    // BUG-003: Archive previous day's sessions before wiping
+    try {
+      const prevSessions = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+      if (prevSessions.length > 0) {
+        const allHist = JSON.parse(localStorage.getItem('zenclox_all_history_v1')) || [];
+        const existingKeys = new Set(allHist.map(h => (h.time || '') + (h.date || '')));
+        prevSessions.forEach(s => {
+          if (!s.date) s.date = saved || today;
+          const key = (s.time || '') + s.date;
+          if (!existingKeys.has(key)) allHist.unshift(s);
+        });
+        localStorage.setItem('zenclox_all_history_v1', JSON.stringify(allHist));
+      }
+    } catch(_) {}
     localStorage.setItem(TODAY_KEY, today);
     localStorage.setItem(STORAGE_KEY, '[]');
     history = [];
@@ -1580,7 +1997,8 @@ function addHistoryEntry(durSecs) {
     outcome: currentIntention ? undefined : 'none', 
     velocity: initialVelocity,
     tags,
-    sessionNum 
+    sessionNum,
+    _savedAt: Date.now() // BUG-M30 FIX: Store unique timestamp for robust deduplication
   });
   saveHistory(); renderHistory();
   if (window.ZenBgSystem && window.ZenBgSystem.addCompletedSessionStar) {
@@ -1591,16 +2009,26 @@ function addHistoryEntry(durSecs) {
 }
 
 function qualityPct(entry) {
-  if (entry.interrupts === 0) return 100;
-  return Math.round((1 - Math.min(entry.interrupts * 60, entry.duration * 0.5) / entry.duration) * 100);
+  let score = 100;
+  score -= (entry.interrupts || 0) * 8;
+  score -= (entry.drifts || 0) * 12;
+  
+  let coef = 1.0;
+  if (entry.outcome === 'partial') coef = 0.7;
+  else if (entry.outcome === 'no') coef = 0.35;
+  else if (entry.outcome === 'none') coef = 0.5;
+  
+  score = score * coef;
+  return Math.max(0, Math.min(100, Math.round(score)));
 }
 
 function renderHistory() {
   Array.from(dom.historyList.children).forEach(li => { if (li !== dom.historyEmpty) li.remove(); });
   const count = history.length;
   dom.historyCount.textContent = count === 1 ? '1 session' : `${count} sessions`;
-  if (count === 0) { dom.historyEmpty.style.display = ''; return; }
-  dom.historyEmpty.style.display = 'none';
+  // BUG-M21 FIX: Use hidden attribute for history empty state
+  if (count === 0) { dom.historyEmpty.removeAttribute('hidden'); return; }
+  dom.historyEmpty.setAttribute('hidden', '');
 
   history.forEach(e => {
     const mins = Math.floor(e.duration/60), secs = String(e.duration%60).padStart(2,'0');
@@ -1617,13 +2045,14 @@ function renderHistory() {
     if (e.tags && e.tags.length > 0) {
       e.tags.forEach(tag => {
         tagBadges += `<span class="item-tag">${esc(tag)}</span>`;
-        cleanIntention = cleanIntention.replace(new RegExp(tag, 'gi'), '').trim();
+        // BUG-001.2: Escape tag name characters to prevent RegExp injection syntax crashes
+        cleanIntention = cleanIntention.replace(new RegExp(escRegExp(tag), 'gi'), '').trim();
       });
       cleanIntention = cleanIntention.replace(/\s+/g, ' ');
     }
     
     li.innerHTML = `
-      <span class="item-outcome-dot ${oc}" title="${e.outcome || 'no reflection'}"></span>
+      <span class="item-outcome-dot ${oc}" title="${esc(e.outcome || 'no reflection')}"></span>
       <span class="item-info">
         <span class="item-row">
           <span class="item-duration">${mins}:${secs}</span>
@@ -1643,17 +2072,34 @@ function renderHistory() {
   });
 }
 
-function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escRegExp(string) { return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
 function exportCSV() {
+  // BUG-019: Guard against empty export
+  if (history.length === 0) { alert('No sessions to export yet.'); return; }
   const rows = [['Session','Duration','Time','Intention','Outcome','Interrupts','Quality']];
   history.forEach((e, i) => {
     const mins = Math.floor(e.duration/60), secs = String(e.duration%60).padStart(2,'0');
     rows.push([i+1, `${mins}:${secs}`, e.time, e.intention||'', e.outcome||'', e.interrupts, `${qualityPct(e)}%`]);
   });
-  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
-  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv], { type:'text/csv' })), download: `zenclox-${todayStr()}.csv` });
-  a.click(); URL.revokeObjectURL(a.href);
+  const csv = rows.map(r => r.map(c => {
+    let val = String(c);
+    const lines = val.split(/\r?\n|\r/);
+    const sanitizedLines = lines.map(line => {
+      if (line.startsWith('=') || line.startsWith('+') || line.startsWith('-') || line.startsWith('@') || line.startsWith('\t') || line.startsWith('\r')) {
+        return "'" + line;
+      }
+      return line;
+    });
+    val = sanitizedLines.join('\n');
+    return `"${val.replace(/"/g,'""')}"`;
+  }).join(',')).join('\n');
+  // BUG-H09 FIX: Append <a> to DOM for cross-browser click() support, and delay revokeObjectURL
+  const blobUrl = URL.createObjectURL(new Blob([csv], { type:'text/csv' }));
+  const a = Object.assign(document.createElement('a'), { href: blobUrl, download: `zenclox-${todayStr()}.csv` });
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(blobUrl); }, 1000);
 }
 
 /* ============================================================
@@ -1690,6 +2136,8 @@ function renderHeatmap() {
  * STREAK & BADGES
  * ============================================================ */
 function getStreak() { try { return JSON.parse(localStorage.getItem(STREAK_KEY)) || { lastDate:null, count:0, longest:0 }; } catch(_) { return { lastDate:null, count:0, longest:0 }; } }
+// BUG-C03 FIX: Export getStreak to window for features.js (WallpaperExport, QuoteOracle)
+window.getStreak = getStreak;
 
 function updateStreak() {
   const s = getStreak(), today = todayStr();
@@ -1705,9 +2153,14 @@ function updateStreak() {
 }
 
 function renderStreakUI(count) {
-  if (count >= 2) {
+  // BUG-L03 FIX: Show streak badge for 1+ days, and properly manage singular/plural labels
+  if (count >= 1) {
     dom.streakBadge.hidden = false;
     dom.streakCount.textContent = count;
+    const label = dom.streakBadge.querySelector('.streak-label');
+    if (label) label.textContent = count === 1 ? 'day' : 'days';
+  } else {
+    dom.streakBadge.hidden = true;
   }
 }
 
@@ -1761,6 +2214,13 @@ function updateVelocity() {
  * NOTIFICATIONS
  * ============================================================ */
 function updateNotifBtn() {
+  // BUG-M19 FIX: Safely check if Notification is defined
+  if (typeof Notification === 'undefined') {
+    dom.notifBtn.className = 'notif-btn disabled';
+    dom.notifText.textContent = 'Notifications unsupported';
+    dom.notifBtn.disabled = true;
+    return;
+  }
   const p = Notification.permission;
   dom.notifBtn.className = 'notif-btn' + (p==='granted'?' granted':p==='denied'?' denied':'');
   dom.notifText.textContent = p==='granted' ? '✓ Notifications enabled' : p==='denied' ? 'Notifications blocked' : 'Enable Notifications';
@@ -1768,11 +2228,12 @@ function updateNotifBtn() {
 }
 
 async function requestNotif() {
+  if (typeof Notification === 'undefined') return;
   if (Notification.permission === 'default') { await Notification.requestPermission(); updateNotifBtn(); }
 }
 
 function sendNotif(title, body) {
-  if (Notification.permission !== 'granted') return;
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
   try { new Notification(title, { body, icon:'favicon.png', tag:'zenclox', renotify:true }); } catch(_) {}
 }
 
@@ -1786,7 +2247,10 @@ function initPresets() {
     chip.addEventListener('click', () => {
       const f = +chip.dataset.focus, b = +chip.dataset.break;
       if (isNaN(f) || isNaN(b)) return;
+      // BUG-L04 FIX: Ignore click if it targets the already active values to prevent pausing running timers
+      if (focusMins === f && breakMins === b) return;
       dom.focusVal.value = f; dom.breakVal.value = b;
+      if (isBreathing) cancelBreathingMode();
       if (isRunning) pauseTimer();
       focusMins = f; breakMins = b;
       setMode(isFocus); markActive(f, b);
@@ -1796,6 +2260,7 @@ function initPresets() {
   dom.applyBtn.addEventListener('click', () => {
     const f = +dom.focusVal.value, b = +dom.breakVal.value;
     if (f<1||f>180||b<1||b>60) return;
+    if (isBreathing) cancelBreathingMode();
     if (isRunning) pauseTimer();
     focusMins = f; breakMins = b;
     setMode(isFocus);
@@ -1808,9 +2273,10 @@ function initPresets() {
 function initSteppers() {
   function addHold(btn, valEl, dir, min, max) {
     function step() { const v = +valEl.value; const nv = Math.max(min, Math.min(max, v+dir)); if(nv!==v) valEl.value = nv; }
-    let hold;
-    const start = () => { step(); hold = setTimeout(() => { hold = setInterval(step, 80); }, 380); };
-    const stop  = () => { clearTimeout(hold); clearInterval(hold); };
+    // BUG-015: Separate variables for timeout and interval
+    let holdTimeout, holdInterval;
+    const start = () => { step(); holdTimeout = setTimeout(() => { holdInterval = setInterval(step, 80); }, 380); };
+    const stop  = () => { clearTimeout(holdTimeout); clearInterval(holdInterval); holdTimeout = null; holdInterval = null; };
     btn.addEventListener('mousedown', start);
     btn.addEventListener('touchstart', start, { passive:true });
     ['mouseup','mouseleave','touchend'].forEach(e => btn.addEventListener(e, stop));
@@ -1903,6 +2369,8 @@ function initEvents() {
       const open = !dom.soundPopover.hidden;
       dom.soundPopover.hidden = open;
       dom.soundToggleBtn.classList.toggle('active', !open);
+      // BUG-M10 FIX: Manage ARIA attributes on sound mixer popover toggle
+      dom.soundToggleBtn.setAttribute('aria-expanded', (!open).toString());
       
       if (!dom.settingsPanel.hidden) {
         dom.settingsPanel.hidden = true;
@@ -1916,6 +2384,8 @@ function initEvents() {
         if (!dom.soundPopover.contains(e.target) && !dom.soundToggleBtn.contains(e.target)) {
           dom.soundPopover.hidden = true;
           dom.soundToggleBtn.classList.remove('active');
+          // BUG-M10 FIX: Set aria-expanded to false on click outside
+          dom.soundToggleBtn.setAttribute('aria-expanded', 'false');
         }
       }
       if (!dom.settingsPanel.hidden) {
@@ -2008,8 +2478,10 @@ function initEvents() {
 
   document.querySelectorAll('.theme-dot').forEach(b => b.addEventListener('click', () => {
     applyTheme(b.dataset.theme);
+    // BUG-H14 FIX: initShieldCanvas now internally cleans up before re-init,
+    // so duplicate animation loops are prevented
     if (isFlowShield) {
-      initShieldCanvas(); // Reset particles color
+      initShieldCanvas();
     }
   }));
 
@@ -2036,13 +2508,18 @@ function initEvents() {
         if (popoverSlider) popoverSlider.value = val;
         
         const isPlaying = activeSounds[type];
-        if (val > 0 && !isPlaying) {
-          startAmbientSound(type);
+        const synth = type === 'rain' ? rainSynth : type === 'space' ? spaceSynth : type === 'fire' ? fireSynth : binauralSynth;
+        
+        // BUG-M16 FIX: Handle preset loading properly if sounds are active in UI but synths are null
+        if (val > 0) {
+          if (!isPlaying || !synth) {
+            activeSounds[type] = false; // Reset to force start
+            startAmbientSound(type);
+          } else {
+            synth.setVolume(ambientVol(type));
+          }
         } else if (val === 0 && isPlaying) {
           startAmbientSound(type);
-        } else if (val > 0 && isPlaying) {
-          const synth = type === 'rain' ? rainSynth : type === 'space' ? spaceSynth : type === 'fire' ? fireSynth : binauralSynth;
-          if (synth) synth.setVolume(ambientVol(type));
         }
       });
       saveSoundPref();
@@ -2067,14 +2544,16 @@ function initEvents() {
       });
       avgVel = count > 0 ? Math.round(avgVel / count) : 100;
       
-      const shareText = encodeURIComponent(`Locked in a deep work block on Zenclox! 🧬\n\n🔥 Total focused time: ${Math.floor(totalMins/60)}h ${totalMins%60}m\n⚡ Average Flow Score: ${avgVel}%\n\nBoost your productivity at zenclox.app #Zenclox #Pomodoro`);
+      // BUG-L16 FIX: Point Twitter share text to active GitHub repository url
+      const shareText = encodeURIComponent(`Locked in a deep work block on Zenclox! 🧬\n\n🔥 Total focused time: ${Math.floor(totalMins/60)}h ${totalMins%60}m\n⚡ Average Flow Score: ${avgVel}%\n\nBoost your productivity at https://github.com/mtayyab-10/zenclox-app #Zenclox #Pomodoro`);
       window.open(`https://twitter.com/intent/tweet?text=${shareText}`, '_blank');
     });
   }
   
   if (linkedinBtn) {
     linkedinBtn.addEventListener('click', () => {
-      const shareUrl = encodeURIComponent('https://zenclox.app');
+      // BUG-L17 FIX: Point LinkedIn share button to active GitHub repository url
+      const shareUrl = encodeURIComponent('https://github.com/mtayyab-10/zenclox-app');
       window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${shareUrl}`, '_blank');
     });
   }
@@ -2096,8 +2575,19 @@ function initEvents() {
 
   // Keyboard shortcuts
   document.addEventListener('keydown', e => {
-    const modalOpen = !dom.intentionOverlay.hidden || !dom.reflOverlay.hidden;
-    if (e.target.tagName === 'INPUT' || modalOpen) return;
+    const palette = $('command-palette-overlay');
+    const aiReport = $('ai-report-overlay');
+    const onboarding = $('onboarding-overlay');
+    const isPaletteOpen = palette && !palette.hidden;
+    const isAiReportOpen = aiReport && !aiReport.hidden;
+    // BUG-L14 FIX: Ignore shortcut keys if the onboarding modal overlay is currently visible
+    const isOnboardingOpen = onboarding && !onboarding.hasAttribute('hidden');
+    const modalOpen = !dom.intentionOverlay.hidden || !dom.reflOverlay.hidden || isPaletteOpen || isAiReportOpen || isOnboardingOpen;
+    const isTyping = e.target.tagName === 'INPUT' || 
+                     e.target.tagName === 'TEXTAREA' || 
+                     e.target.tagName === 'SELECT' || 
+                     e.target.isContentEditable;
+    if (isTyping || modalOpen) return;
     switch(e.code) {
       case 'Space':   e.preventDefault(); handleStart(); break;
       case 'KeyR':    e.preventDefault(); resetTimer(); break;
@@ -2146,17 +2636,16 @@ function initEvents() {
   const focusBackBtn = $('focus-back-btn');
   if (focusBackBtn) {
     focusBackBtn.addEventListener('click', () => {
-      if (isFlowShield) {
+      // BUG-M27 FIX: Exit modes sequentially/hierarchically instead of all at once
+      if (isBreathing) {
+        cancelBreathingMode();
+      } else if (isFlowShield) {
         toggleFlowShield();
-      }
-      if (document.body.classList.contains('zen-mode-active')) {
+      } else if (document.body.classList.contains('zen-mode-active')) {
         const zenToggleBtn = $('zen-toggle-btn');
         if (zenToggleBtn) {
           zenToggleBtn.click();
         }
-      }
-      if (isBreathing) {
-        cancelBreathingMode();
       }
     });
   }
@@ -2174,16 +2663,27 @@ function initSW() {
  * ============================================================ */
 function init() {
   // Theme
-  applyTheme('void');
+  // BUG-002: Load persisted theme instead of hardcoding 'void'
+  applyTheme(localStorage.getItem(THEME_KEY) || 'void');
 
   initFavicon();
   loadHistory();
   renderHeatmap();
   updateVelocity();
 
-  // Streak UI (read existing)
+  // Streak UI (read existing & check if expired - BUG-032)
   const s = getStreak();
-  if (s.count >= 2) { dom.streakBadge.hidden = false; dom.streakCount.textContent = s.count; }
+  if (s.lastDate) {
+    const today = todayStr();
+    const yd = new Date(); yd.setDate(yd.getDate()-1);
+    const yds = `${yd.getFullYear()}-${String(yd.getMonth()+1).padStart(2,'0')}-${String(yd.getDate()).padStart(2,'0')}`;
+    if (s.lastDate !== today && s.lastDate !== yds) {
+      s.count = 0;
+      try { localStorage.setItem(STREAK_KEY, JSON.stringify(s)); } catch(_) {}
+    }
+  }
+  // BUG-L03 FIX: Call renderStreakUI to setup initial streak badge
+  renderStreakUI(s.count);
 
   // Load breath toggle preference
   breathToggleEnabled = localStorage.getItem('zenclox_breath_toggle_v1') === 'true';
@@ -2209,12 +2709,95 @@ function init() {
 
   updateDisplay();
 
+  // BUG-033: Show reflection modal if session outcome is undefined and there is an intention
+  if (history.length > 0 && history[0].outcome === undefined && history[0].intention) {
+    showReflectionModal();
+  }
+
+  // BUG-H15 FIX: Use a single atomic flag checked by features.js.
+  // features.js will call startTimer() and clear the flag.
+  // The fallback timeout (3s) only fires if features.js never loaded.
   if (shouldResume) {
     dom.timerSub.textContent = 'Resuming session…';
-    setTimeout(() => startTimer(), 300);
+    window._zencloxPendingResume = true;
+    window._zencloxResumeTimeout = setTimeout(() => {
+      if (window._zencloxPendingResume) {
+        window._zencloxPendingResume = false;
+        startTimer();
+      }
+    }, 3000);
   } else {
-    dom.timerSub.textContent = isFocus ? 'Ready to focus' : 'Take a break';
+    // Only set standard label if we aren't showing the reflection overlay
+    if (!(history.length > 0 && history[0].outcome === undefined && history[0].intention)) {
+      dom.timerSub.textContent = isFocus ? 'Ready to focus' : 'Take a break';
+    }
+  }
+  // BUG-M05 FIX: Create first interaction hook to auto-resume active sounds (respecting autoplay policies)
+  const handleFirstInteraction = () => {
+    try {
+      const hasActive = Object.values(activeSounds).some(Boolean);
+      if (hasActive) {
+        resumeAmbientIfNeeded();
+      }
+    } catch (e) {
+      console.warn('First interaction resume failed', e);
+    }
+    document.removeEventListener('click', handleFirstInteraction);
+    document.removeEventListener('keydown', handleFirstInteraction);
+    document.removeEventListener('pointerdown', handleFirstInteraction);
+  };
+  document.addEventListener('click', handleFirstInteraction);
+  document.addEventListener('keydown', handleFirstInteraction);
+  document.addEventListener('pointerdown', handleFirstInteraction);
+
+  // BUG-M07/M08/M09/M10 FIX: Trap focus inside overlays for keyboard accessibility
+  if (window.trapFocus) {
+    window.trapFocus(dom.intentionOverlay);
+    window.trapFocus(dom.reflOverlay);
   }
 }
 
+// Global focus trap helper
+function trapFocus(modalEl) {
+  if (!modalEl) return;
+  modalEl.addEventListener('keydown', function(e) {
+    const isTabPressed = e.key === 'Tab' || e.keyCode === 9;
+    if (!isTabPressed) return;
+    
+    // Filter focusable elements that are visible
+    const focusableEls = Array.from(modalEl.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+      .filter(el => {
+        return (el.offsetWidth > 0 || el.offsetHeight > 0 || el.getClientRects().length > 0) && 
+               !el.hasAttribute('disabled') && 
+               el.getAttribute('aria-hidden') !== 'true';
+      });
+      
+    if (focusableEls.length === 0) return;
+    const firstFocusable = focusableEls[0];
+    const lastFocusable = focusableEls[focusableEls.length - 1];
+
+    if (e.shiftKey) { // Shift + Tab
+      if (document.activeElement === firstFocusable) {
+        lastFocusable.focus();
+        e.preventDefault();
+      }
+    } else { // Tab
+      if (document.activeElement === lastFocusable) {
+        firstFocusable.focus();
+        e.preventDefault();
+      }
+    }
+  });
+}
+window.trapFocus = trapFocus;
+
+// Explicitly export core controls to window for features.js compatibility
+window.handleStart = handleStart;
+window.resetTimer = resetTimer;
+window.skipToNext = skipToNext;
+window.submitReflection = submitReflection;
+window.addHistoryEntry = addHistoryEntry;
+window.exportCSV = exportCSV;
+
 init();
+
