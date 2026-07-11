@@ -708,6 +708,8 @@ const CommandPalette = {
   },
 
   registerCommands() {
+    const isDev = new URLSearchParams(window.location.search).get('dev') === 'true';
+
     this.commands = [
       { name: "⏯️ Start / Pause Focus Timer", desc: "Toggle timer run state", shortcut: "Space", action: () => window.handleStart() },
       { name: "🔄 Reset Active Timer Cycle", desc: "Return countdown to original value", shortcut: "R", action: () => window.resetTimer() },
@@ -727,6 +729,10 @@ const CommandPalette = {
       { name: "⚙️ Toggle Settings Panel", desc: "Access sliders and interval settings", action: () => document.getElementById('settings-toggle-btn')?.click() },
       { name: "🎬 Play Guided Onboarding Tour", desc: "Restart the spotlight walk-through of features", shortcut: "T", action: () => { localStorage.removeItem('zenclox_onboarding_completed_v1'); OnboardingSystem.start(); } }
     ];
+
+    if (isDev) {
+      this.commands.push({ name: "🌐 Open Google & SEO Setup Hub", desc: "Configure Google Analytics, Search Console, and GTM", shortcut: "G", action: () => GoogleHub.open() });
+    }
   },
 
   toggle() {
@@ -2653,6 +2659,326 @@ const OnboardingSystem = {
 };
 
 // ============================================================
+// GOOGLE INTEGRATIONS & SEO HUB
+// ============================================================
+const GoogleHub = {
+  isOpen: false,
+  activeTab: 'gsc',
+
+  init() {
+    const isDev = new URLSearchParams(window.location.search).get('dev') === 'true';
+    const btn = document.getElementById('google-hub-btn');
+    const closeBtn = document.getElementById('google-hub-close-btn');
+    const overlay = document.getElementById('google-hub-overlay');
+    const saveBtn = document.getElementById('google-hub-save-btn');
+    const clearLogsBtn = document.getElementById('google-hub-clear-logs');
+
+    if (btn) {
+      if (!isDev) {
+        btn.style.display = 'none';
+      }
+      btn.addEventListener('click', () => this.open());
+    }
+    if (closeBtn) closeBtn.addEventListener('click', () => this.close());
+    if (overlay) {
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) this.close();
+      });
+    }
+
+    // Tab bindings
+    const tabs = document.querySelectorAll('#google-hub-tabs .report-tab');
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const tabName = tab.dataset.tab;
+        this.switchTab(tabName);
+      });
+    });
+
+    if (saveBtn) {
+      saveBtn.addEventListener('click', () => this.save());
+    }
+
+    if (clearLogsBtn) {
+      clearLogsBtn.addEventListener('click', () => {
+        const consoleEl = document.getElementById('google-hub-logs-console');
+        if (consoleEl) {
+          consoleEl.innerHTML = `<span style="color: var(--muted)">[System] Logs cleared.</span>`;
+        }
+      });
+    }
+
+    // Load saved settings on init
+    this.load();
+
+    // Verify sitemap and robots.txt asynchronously
+    this.verifySEOFiles();
+
+    // Hook analytics
+    this.setupAnalyticsHooks();
+  },
+
+  open() {
+    const overlay = document.getElementById('google-hub-overlay');
+    if (!overlay) return;
+    overlay.removeAttribute('hidden');
+    overlay.style.display = 'flex';
+    this.isOpen = true;
+    this.load();
+    this.verifySEOFiles();
+    this.logLocalEvent('hub_opened', { time: new Date().toLocaleTimeString() });
+  },
+
+  close() {
+    const overlay = document.getElementById('google-hub-overlay');
+    if (!overlay) return;
+    overlay.setAttribute('hidden', '');
+    overlay.style.display = 'none';
+    this.isOpen = false;
+  },
+
+  switchTab(tabName) {
+    this.activeTab = tabName;
+    const tabs = document.querySelectorAll('#google-hub-tabs .report-tab');
+    tabs.forEach(tab => {
+      const active = tab.dataset.tab === tabName;
+      tab.classList.toggle('active', active);
+      tab.style.background = active ? 'var(--surface)' : 'none';
+      tab.style.color = active ? 'var(--text)' : 'var(--muted)';
+    });
+
+    const contents = document.querySelectorAll('.google-hub-tab-content');
+    contents.forEach(content => {
+      content.style.display = content.id === `google-hub-tab-${tabName}` ? 'flex' : 'none';
+    });
+  },
+
+  load() {
+    const gscToken = localStorage.getItem('zenclox_gsc_token') || 'TeV53NAjh8OIMvz6BJQ-TZE8GhM9uLln3ts2Mamj7m0';
+    const ga4Id = localStorage.getItem('zenclox_ga4_id') || 'G-XXXXXXXXXX';
+    const gtmId = localStorage.getItem('zenclox_gtm_id') || '';
+    const eventsEnabled = localStorage.getItem('zenclox_events_enabled') !== 'false';
+
+    const tokenInput = document.getElementById('gsc-token-input');
+    const gaIdInput = document.getElementById('ga4-id-input');
+    const gtmIdInput = document.getElementById('gtm-id-input');
+    const toggleInput = document.getElementById('google-events-toggle');
+
+    if (tokenInput) tokenInput.value = gscToken;
+    if (gaIdInput) gaIdInput.value = ga4Id;
+    if (gtmIdInput) gtmIdInput.value = gtmId;
+    if (toggleInput) toggleInput.checked = eventsEnabled;
+  },
+
+  save() {
+    const tokenInput = document.getElementById('gsc-token-input');
+    const gaIdInput = document.getElementById('ga4-id-input');
+    const gtmIdInput = document.getElementById('gtm-id-input');
+    const toggleInput = document.getElementById('google-events-toggle');
+
+    const gscToken = tokenInput ? tokenInput.value.trim() : '';
+    const ga4Id = gaIdInput ? gaIdInput.value.trim() : '';
+    const gtmId = gtmIdInput ? gtmIdInput.value.trim() : '';
+    const eventsEnabled = toggleInput ? toggleInput.checked : true;
+
+    localStorage.setItem('zenclox_gsc_token', gscToken);
+    localStorage.setItem('zenclox_ga4_id', ga4Id);
+    localStorage.setItem('zenclox_gtm_id', gtmId);
+    localStorage.setItem('zenclox_events_enabled', eventsEnabled ? 'true' : 'false');
+
+    this.logLocalEvent('hub_settings_saved', { gscToken, ga4Id, gtmId, eventsEnabled });
+
+    // Show achievement/badge toast for saving settings
+    if (typeof window.showBadgeToast === 'function') {
+      window.showBadgeToast('🌐', 'Google Settings Updated!');
+    }
+
+    // Refresh scripts dynamically
+    this.refreshScripts();
+    this.close();
+  },
+
+  async verifySEOFiles() {
+    const sitemapStatus = document.getElementById('gsc-sitemap-status');
+    const robotsStatus = document.getElementById('gsc-robots-status');
+    const htmlfileStatus = document.getElementById('gsc-htmlfile-status');
+
+    if (window.location.protocol === 'file:') {
+      if (sitemapStatus) sitemapStatus.textContent = 'Found (Local File)';
+      if (robotsStatus) robotsStatus.textContent = 'Found (Local File)';
+      if (htmlfileStatus) htmlfileStatus.textContent = 'Found (Local File)';
+      return;
+    }
+
+    // Sitemap check
+    if (sitemapStatus) {
+      try {
+        const res = await fetch('/sitemap.xml');
+        if (res.ok) {
+          sitemapStatus.textContent = 'Active (Live)';
+          sitemapStatus.style.color = '#10b981';
+          sitemapStatus.style.background = 'rgba(16,185,129,0.1)';
+        } else {
+          sitemapStatus.textContent = 'Missing';
+          sitemapStatus.style.color = '#ef4444';
+          sitemapStatus.style.background = 'rgba(239,68,68,0.1)';
+        }
+      } catch (e) {
+        sitemapStatus.textContent = 'Accessible';
+      }
+    }
+
+    // Robots check
+    if (robotsStatus) {
+      try {
+        const res = await fetch('/robots.txt');
+        if (res.ok) {
+          robotsStatus.textContent = 'Active (Live)';
+          robotsStatus.style.color = '#10b981';
+          robotsStatus.style.background = 'rgba(16,185,129,0.1)';
+        } else {
+          robotsStatus.textContent = 'Missing';
+          robotsStatus.style.color = '#ef4444';
+          robotsStatus.style.background = 'rgba(239,68,68,0.1)';
+        }
+      } catch (e) {
+        robotsStatus.textContent = 'Accessible';
+      }
+    }
+
+    // HTML Verification File check
+    if (htmlfileStatus) {
+      try {
+        const res = await fetch('/google7c5c9fa236b6513d.html');
+        if (res.ok) {
+          htmlfileStatus.textContent = 'Detected (Live)';
+          htmlfileStatus.style.color = '#10b981';
+          htmlfileStatus.style.background = 'rgba(16,185,129,0.1)';
+        } else {
+          htmlfileStatus.textContent = 'Not Found';
+          htmlfileStatus.style.color = '#ef4444';
+          htmlfileStatus.style.background = 'rgba(239,68,68,0.1)';
+        }
+      } catch (e) {
+        htmlfileStatus.textContent = 'Accessible';
+      }
+    }
+  },
+
+  refreshScripts() {
+    // 1. Remove old verification meta if any
+    const oldMetas = document.querySelectorAll('meta[name="google-site-verification"]');
+    oldMetas.forEach(m => m.remove());
+
+    // 2. Remove old loader & tags if present to prevent multiple loads
+    const loader = document.getElementById('google-integrations-loader');
+    if (loader) loader.remove();
+
+    const scripts = document.querySelectorAll('script[src*="googletagmanager.com"]');
+    scripts.forEach(s => s.remove());
+
+    // Create a new script element to trigger setup
+    const gaId = localStorage.getItem('zenclox_ga4_id') || 'G-XXXXXXXXXX';
+    const gscToken = localStorage.getItem('zenclox_gsc_token') || 'TeV53NAjh8OIMvz6BJQ-TZE8GhM9uLln3ts2Mamj7m0';
+    const gtmId = localStorage.getItem('zenclox_gtm_id') || '';
+
+    // Inject Meta
+    if (gscToken) {
+      let meta = document.createElement('meta');
+      meta.name = 'google-site-verification';
+      meta.content = gscToken;
+      document.head.appendChild(meta);
+    }
+
+    // Inject GA4
+    if (gaId && gaId !== 'disabled') {
+      let script = document.createElement('script');
+      script.async = true;
+      script.src = 'https://www.googletagmanager.com/gtag/js?id=' + gaId;
+      document.head.appendChild(script);
+
+      window.dataLayer = window.dataLayer || [];
+      window.gtag = function() { window.dataLayer.push(arguments); };
+      window.gtag('js', new Date());
+      window.gtag('config', gaId);
+    }
+
+    // Dynamic noscript GTM update
+    const oldNoscript = document.getElementById('gtm-noscript-iframe-container');
+    if (oldNoscript) oldNoscript.remove();
+
+    if (gtmId) {
+      let ns = document.createElement('div');
+      ns.id = 'gtm-noscript-iframe-container';
+      let iframe = document.createElement('iframe');
+      iframe.src = 'https://www.googletagmanager.com/ns.html?id=' + gtmId;
+      iframe.height = '0';
+      iframe.width = '0';
+      iframe.style.display = 'none';
+      iframe.style.visibility = 'hidden';
+      
+      let nsWrap = document.createElement('noscript');
+      nsWrap.appendChild(iframe);
+      ns.appendChild(nsWrap);
+      document.body.insertBefore(ns, document.body.firstChild);
+    }
+  },
+
+  logLocalEvent(eventName, params) {
+    const consoleEl = document.getElementById('google-hub-logs-console');
+    if (consoleEl) {
+      const now = new Date();
+      const time = now.toTimeString().split(' ')[0];
+      const logSpan = document.createElement('span');
+      logSpan.innerHTML = `<span style="color: var(--muted)">[${time}]</span> Event: <strong style="color: var(--text)">${eventName}</strong> <span style="font-size: 0.6rem; color: var(--focus)">${JSON.stringify(params)}</span>`;
+      consoleEl.appendChild(logSpan);
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    }
+  },
+
+  logEvent(eventName, params) {
+    const eventsEnabled = localStorage.getItem('zenclox_events_enabled') !== 'false';
+    this.logLocalEvent(eventName, params);
+
+    if (eventsEnabled && typeof window.gtag === 'function') {
+      window.gtag('event', eventName, params);
+    }
+  },
+
+  setupAnalyticsHooks() {
+    // Hook theme change
+    document.addEventListener('themechange', (e) => {
+      this.logEvent('theme_change', { theme_name: e.detail.theme });
+    });
+
+    // Hook breathing toggle in settings
+    const breathToggle = document.getElementById('breath-toggle');
+    if (breathToggle) {
+      breathToggle.addEventListener('change', () => {
+        this.logEvent('toggle_breathing_prep', { enabled: breathToggle.checked });
+      });
+    }
+
+    // Hook ambient volume levels
+    const sliders = ['rain', 'space', 'fire', 'binaural'];
+    sliders.forEach(s => {
+      const slider = document.getElementById(`slider-${s}`);
+      const popoverSlider = document.getElementById(`popover-slider-${s}`);
+      
+      const logVol = (val) => {
+        clearTimeout(this[`_volTimeout_${s}`]);
+        this[`_volTimeout_${s}`] = setTimeout(() => {
+          this.logEvent('ambient_sound_volume', { sound: s, volume: val });
+        }, 1500);
+      };
+
+      if (slider) slider.addEventListener('input', () => logVol(slider.value));
+      if (popoverSlider) popoverSlider.addEventListener('input', () => logVol(popoverSlider.value));
+    });
+  }
+};
+
+// ============================================================
 const initFeatures = () => {
   // Initialize new systems
   MoodSystem.init();
@@ -2662,8 +2988,57 @@ const initFeatures = () => {
   ZenMode.init();
   DNASystem.init();
   OnboardingSystem.init();
+  GoogleHub.init();
   if (window.ZenBgSystem) {
     window.ZenBgSystem.start();
+  }
+
+  // Hook core controls
+  const originalHandleStart = window.handleStart;
+  if (originalHandleStart) {
+    window.handleStart = function() {
+      originalHandleStart();
+      GoogleHub.logEvent(window.isRunning ? 'timer_start' : 'timer_pause', {
+        mode: window.isFocus ? 'focus' : 'break',
+        remaining_seconds: window.remaining
+      });
+    };
+  }
+
+  const originalResetTimer = window.resetTimer;
+  if (originalResetTimer) {
+    window.resetTimer = function() {
+      originalResetTimer();
+      GoogleHub.logEvent('timer_reset', {
+        mode: window.isFocus ? 'focus' : 'break'
+      });
+    };
+  }
+
+  const originalSkipToNext = window.skipToNext;
+  if (originalSkipToNext) {
+    window.skipToNext = function() {
+      originalSkipToNext();
+      GoogleHub.logEvent('timer_skip', {
+        to_mode: window.isFocus ? 'focus' : 'break'
+      });
+    };
+  }
+
+  const originalZenToggle = ZenMode.toggle;
+  if (originalZenToggle) {
+    ZenMode.toggle = function() {
+      originalZenToggle.call(ZenMode);
+      GoogleHub.logEvent('zen_mode_toggle', { active: ZenMode.active });
+    };
+  }
+
+  const originalToggleFlowShield = window.toggleFlowShield;
+  if (originalToggleFlowShield) {
+    window.toggleFlowShield = function() {
+      originalToggleFlowShield();
+      GoogleHub.logEvent('cinema_mode_toggle', { active: window.isFlowShield });
+    };
   }
 
   // Retrieve/declare variables for deduplication fix
@@ -2766,6 +3141,15 @@ const initFeatures = () => {
         entry.date = getTodayStr();
         entry.mood = MoodSystem.selectedMood;
 
+        // Log GA4 Event
+        GoogleHub.logEvent('focus_session_complete', {
+          duration_minutes: Math.round(durSecs / 60),
+          interruptions: entry.interrupts,
+          drifts: entry.drifts || 0,
+          intention: entry.intention || '',
+          tags: entry.tags ? entry.tags.join(',') : ''
+        });
+
         // Persist to all time local storage
         let allHistory = [];
         try {
@@ -2800,6 +3184,13 @@ const initFeatures = () => {
       originalSubmitReflection(outcome);
 
       if (isPendingReflection && currentEntry) {
+        // Log GA4 Event
+        GoogleHub.logEvent('session_reflection_submit', {
+          outcome: outcome,
+          mood: MoodSystem.selectedMood,
+          velocity: currentEntry.velocity
+        });
+
         // BUG-C05 FIX: Match allHistory entry by sessionNum+time instead of assuming index 0
         let allHistory = [];
         try {

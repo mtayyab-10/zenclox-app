@@ -2,9 +2,47 @@
 <html lang="en" data-theme="void">
 <head>
     <meta charset="UTF-8" />
+  <!-- Google Integrations Loader (GSC, GA4, GTM) -->
+  <script id="google-integrations-loader">
+    (function() {
+      const gaId = localStorage.getItem('zenclox_ga4_id') || 'G-4Q2VFKJB02';
+      const gscToken = localStorage.getItem('zenclox_gsc_token') || 'TeV53NAjh8OIMvz6BJQ-TZE8GhM9uLln3ts2Mamj7m0';
+      const gtmId = localStorage.getItem('zenclox_gtm_id');
+
+      // 1. Inject GSC site verification
+      if (gscToken) {
+        let meta = document.createElement('meta');
+        meta.name = 'google-site-verification';
+        meta.content = gscToken;
+        document.head.appendChild(meta);
+      }
+
+      // 2. Inject GA4 (gtag.js)
+      if (gaId && gaId !== 'disabled') {
+        let script = document.createElement('script');
+        script.async = true;
+        script.src = 'https://www.googletagmanager.com/gtag/js?id=' + gaId;
+        document.head.appendChild(script);
+
+        window.dataLayer = window.dataLayer || [];
+        window.gtag = function() { dataLayer.push(arguments); };
+        window.gtag('js', new Date());
+        window.gtag('config', gaId);
+      }
+
+      // 3. Inject GTM
+      if (gtmId) {
+        (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+        new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+        j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+        'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+        })(window,document,'script','dataLayer',gtmId);
+      }
+    })();
+  </script>
+
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Zenclox — Flow Timer</title>
-  <meta name="google-site-verification" content="TeV53NAjh8OIMvz6BJQ-TZE8GhM9uLln3ts2Mamj7m0" />
 
   <meta name="description" content="A premium Pomodoro timer with ambient soundscapes, session intentions, flow quality tracking, and weekly heatmap." />
   <meta name="theme-color" content="#0f0f14" id="theme-meta" />
@@ -19,6 +57,24 @@
 <body>
 
   <canvas id="flow-shield-canvas" aria-hidden="true"></canvas>
+
+  <!-- GTM Noscript Loader -->
+  <script id="gtm-noscript-loader">
+    (function() {
+      const gtmId = localStorage.getItem('zenclox_gtm_id');
+      if (gtmId) {
+        let ns = document.createElement('noscript');
+        let iframe = document.createElement('iframe');
+        iframe.src = 'https://www.googletagmanager.com/ns.html?id=' + gtmId;
+        iframe.height = '0';
+        iframe.width = '0';
+        iframe.style.display = 'none';
+        iframe.style.visibility = 'hidden';
+        ns.appendChild(iframe);
+        document.body.insertBefore(ns, document.body.firstChild);
+      }
+    })();
+  </script>
 
   <div class="app-shell">
 
@@ -164,6 +220,10 @@
           <button class="notif-btn" id="notif-btn" type="button" style="margin-top: 10px;">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
             <span id="notif-text">Enable Notifications</span>
+          </button>
+          <button class="notif-btn" id="google-hub-btn" type="button" style="margin-top: 10px; border-color: rgba(66, 133, 244, 0.35);">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color: #4285F4;"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10"/><path d="M2 12h20"/></svg>
+            <span>Google &amp; SEO Setup</span>
           </button>
         </div>
 
@@ -576,6 +636,124 @@
         </div>
         <span id="badge-copy-toast" style="font-size: 0.55rem; color: var(--focus); display: block; margin-top: 4px; opacity: 0; transition: opacity 0.2s;">Code copied to clipboard!</span>
       </div>
+    </div>
+  </div>
+
+  <!-- GOOGLE INTEGRATION & SEO HUB MODAL -->
+  <div class="modal-overlay" id="google-hub-overlay" role="dialog" aria-modal="true" aria-labelledby="google-hub-title" hidden>
+    <div class="modal-card" style="max-width: 500px; width: 100%; border-radius: 18px; padding: 24px; max-height: 90vh; overflow-y: auto;">
+      <div style="width: 100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h3 class="modal-title" id="google-hub-title" style="margin: 0; font-size: 1.15rem; display: flex; align-items: center; gap: 8px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--focus);">
+            <circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10"/><path d="M2 12h20"/>
+          </svg>
+          Google &amp; SEO Integrations Hub
+        </h3>
+        <button id="google-hub-close-btn" style="background: none; border: none; color: var(--muted); font-size: 1.5rem; cursor: pointer; padding: 0 4px; line-height: 1;">&times;</button>
+      </div>
+
+      <div class="report-tabs" id="google-hub-tabs" style="display: flex; width: 100%; gap: 6px; background: var(--surface-2); padding: 4px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 16px;">
+        <button class="report-tab active" data-tab="gsc" style="flex: 1; border: none; background: var(--surface); color: var(--text); padding: 6px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">Search Console</button>
+        <button class="report-tab" data-tab="ga4" style="flex: 1; border: none; background: none; color: var(--muted); padding: 6px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">Analytics (GA4)</button>
+        <button class="report-tab" data-tab="gtm" style="flex: 1; border: none; background: none; color: var(--muted); padding: 6px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">Tag Manager</button>
+        <button class="report-tab" data-tab="status" style="flex: 1; border: none; background: none; color: var(--muted); padding: 6px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s;">Live Logs</button>
+      </div>
+
+      <!-- TAB 1: SEARCH CONSOLE -->
+      <div id="google-hub-tab-gsc" class="google-hub-tab-content" style="display: flex; flex-direction: column; gap: 14px;">
+        <p style="font-size: 0.74rem; color: var(--muted); line-height: 1.4; margin: 0;">
+          Google Search Console (GSC) indexes your website and tracks impressions and click performance on Google Search. Follow the steps from <strong>Google_Setup.pdf</strong>:
+        </p>
+
+        <div style="background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 0.74rem; font-weight: 600; color: var(--text);">1. Sitemap configuration</span>
+            <span id="gsc-sitemap-status" style="font-size: 0.65rem; color: #10b981; background: rgba(16,185,129,0.1); padding: 2px 8px; border-radius: 100px; font-weight: 600;">Detecting...</span>
+          </div>
+          <span style="font-size: 0.68rem; color: var(--sub);">
+            Verified sitemap is active at <a href="/sitemap.xml" target="_blank" style="color: var(--focus); text-decoration: none;">/sitemap.xml</a>. Submit this URL directly in the GSC Sitemaps panel.
+          </span>
+        </div>
+
+        <div style="background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 0.74rem; font-weight: 600; color: var(--text);">2. Robots.txt configuration</span>
+            <span id="gsc-robots-status" style="font-size: 0.65rem; color: #10b981; background: rgba(16,185,129,0.1); padding: 2px 8px; border-radius: 100px; font-weight: 600;">Detecting...</span>
+          </div>
+          <span style="font-size: 0.68rem; color: var(--sub);">
+            Verified robots.txt exists at <a href="/robots.txt" target="_blank" style="color: var(--focus); text-decoration: none;">/robots.txt</a> and contains the sitemap directive.
+          </span>
+        </div>
+
+        <div style="background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 0.74rem; font-weight: 600; color: var(--text);">3. HTML File verification file</span>
+            <span id="gsc-htmlfile-status" style="font-size: 0.65rem; color: #10b981; background: rgba(16,185,129,0.1); padding: 2px 8px; border-radius: 100px; font-weight: 600;">Detecting...</span>
+          </div>
+          <span style="font-size: 0.68rem; color: var(--sub);">
+            Verification file <a href="/google7c5c9fa236b6513d.html" target="_blank" style="color: var(--focus); text-decoration: none;">google7c5c9fa236b6513d.html</a> is uploaded.
+          </span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <label for="gsc-token-input" style="font-size: 0.72rem; font-weight: 600; color: var(--sub); text-transform: uppercase; letter-spacing: 0.05em;">GSC HTML Meta Tag Verification Token</label>
+          <input type="text" id="gsc-token-input" style="width: 100%; padding: 10px 14px; font-size: 0.85rem; font-family: var(--mono); border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); outline: none;" placeholder="Paste site verification token..." />
+          <span style="font-size: 0.62rem; color: var(--muted); line-height: 1.3;">
+            If you verify via HTML Meta Tag (Option B), paste the token from the content attribute of: <code>&lt;meta name="google-site-verification" content="TOKEN" /&gt;</code>.
+          </span>
+        </div>
+      </div>
+
+      <!-- TAB 2: ANALYTICS (GA4) -->
+      <div id="google-hub-tab-ga4" class="google-hub-tab-content" style="display: none; flex-direction: column; gap: 14px;">
+        <p style="font-size: 0.74rem; color: var(--muted); line-height: 1.4; margin: 0;">
+          Google Analytics 4 (GA4) measures user interactions, page views, and engagement statistics in real-time.
+        </p>
+
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <label for="ga4-id-input" style="font-size: 0.72rem; font-weight: 600; color: var(--sub); text-transform: uppercase; letter-spacing: 0.05em;">GA4 Measurement ID</label>
+          <input type="text" id="ga4-id-input" style="width: 100%; padding: 10px 14px; font-size: 0.85rem; font-family: var(--mono); border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); outline: none;" placeholder="e.g. G-XXXXXXXXXX" />
+          <span style="font-size: 0.62rem; color: var(--muted); line-height: 1.3;">
+            Find this in GA4 under <strong>Admin &gt; Data Streams &gt; Web Stream</strong>. Enter your ID to load GA4 tracking code.
+          </span>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-top: 4px;">
+          <span style="font-size: 0.74rem; color: var(--text);">Track App Actions &amp; Intention Events</span>
+          <label class="toggle-label" for="google-events-toggle" style="margin: 0; padding: 0;">
+            <input type="checkbox" id="google-events-toggle" class="custom-toggle" checked />
+          </label>
+        </div>
+        <span style="font-size: 0.62rem; color: var(--muted); line-height: 1.3; margin-top: -6px;">
+          Sends focus session counts, theme switches, breathing prep, and menu interactions to your GA4 property.
+        </span>
+      </div>
+
+      <!-- TAB 3: TAG MANAGER (GTM) -->
+      <div id="google-hub-tab-gtm" class="google-hub-tab-content" style="display: none; flex-direction: column; gap: 14px;">
+        <p style="font-size: 0.74rem; color: var(--muted); line-height: 1.4; margin: 0;">
+          Google Tag Manager (GTM) lets you manage and deploy marketing tags (including Facebook Pixel, Hotjar, custom scripts) without writing code.
+        </p>
+
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <label for="gtm-id-input" style="font-size: 0.72rem; font-weight: 600; color: var(--sub); text-transform: uppercase; letter-spacing: 0.05em;">GTM Container ID</label>
+          <input type="text" id="gtm-id-input" style="width: 100%; padding: 10px 14px; font-size: 0.85rem; font-family: var(--mono); border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); outline: none;" placeholder="e.g. GTM-XXXXXXX" />
+          <span style="font-size: 0.62rem; color: var(--muted); line-height: 1.3;">
+            Find this in your GTM account dashboard. Once set, GTM scripts will load in the page header and body automatically.
+          </span>
+        </div>
+      </div>
+
+      <!-- TAB 4: LIVE LOGS -->
+      <div id="google-hub-tab-status" class="google-hub-tab-content" style="display: none; flex-direction: column; gap: 10px;">
+        <span style="font-size: 0.72rem; font-weight: 600; color: var(--sub); text-transform: uppercase; letter-spacing: 0.05em;">Live Event Streams</span>
+        <div id="google-hub-logs-console" style="width: 100%; height: 160px; background: rgba(0,0,0,0.5); border: 1px solid var(--border); border-radius: 8px; font-family: var(--mono); font-size: 0.65rem; color: var(--focus); padding: 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; box-sizing: border-box;">
+          <span style="color: var(--muted);">[System] Console initialized. Start focus, change theme, or toggle settings to see live events track...</span>
+        </div>
+        <button id="google-hub-clear-logs" style="align-self: flex-end; background: none; border: none; color: var(--muted); font-size: 0.65rem; cursor: pointer; text-decoration: underline;">Clear logs</button>
+      </div>
+
+      <button class="modal-primary-btn" id="google-hub-save-btn" style="margin-top: 18px;">💾 Save &amp; Apply Changes</button>
     </div>
   </div>
 
