@@ -498,6 +498,21 @@ kbd { display:inline-block;padding:2px 6px;border:1px solid var(--border);border
   z-index:200;display:flex;align-items:center;justify-content:center;
   padding:20px;animation:overlay-in 0.25s ease;
 }
+[data-theme="light"] .modal-overlay {
+  --text: #ffffff;
+  --muted: #a1a1aa;
+  --sub: #71717a;
+  --border: rgba(255, 255, 255, 0.08);
+  --surface: #0c0c0e;
+  --surface-2: #16161a;
+  --focus: #ffffff;
+  --focus-glow: rgba(255, 255, 255, 0.2);
+  --focus-ring: rgba(255, 255, 255, 0.9);
+  --active: #ffffff;
+  --active-glow: rgba(255, 255, 255, 0.2);
+  --active-ring: rgba(255, 255, 255, 0.9);
+  --primary-icon: #000000;
+}
 @keyframes overlay-in { from{opacity:0} to{opacity:1} }
 .modal-card {
   background:rgba(22, 22, 31, 0.7);
@@ -526,7 +541,7 @@ kbd { display:inline-block;padding:2px 6px;border:1px solid var(--border);border
 }
 .modal-input:focus { border-color:var(--active); }
 .modal-input::placeholder { color:var(--sub); }
-.modal-primary-btn { width:100%;background:var(--active);color:#fff;border:none;border-radius:var(--rx);padding:12px;font-family:var(--sans);font-size:0.9rem;font-weight:600;cursor:pointer;transition:opacity 0.2s,transform 0.1s;margin-top:2px; }
+.modal-primary-btn { width:100%;background:var(--active);color:var(--primary-icon, #fff);border:none;border-radius:var(--rx);padding:12px;font-family:var(--sans);font-size:0.9rem;font-weight:600;cursor:pointer;transition:opacity 0.2s,transform 0.1s;margin-top:2px; }
 .modal-primary-btn:hover { opacity:0.92; }
 .modal-primary-btn:active { transform:scale(0.97); }
 .modal-ghost-btn { background:none;border:none;color:var(--sub);font-size:0.77rem;cursor:pointer;padding:4px;transition:color 0.2s; }
