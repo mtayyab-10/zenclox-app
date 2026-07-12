@@ -79,7 +79,12 @@ body.mode-break { --active: var(--brk); --active-glow: var(--brk-glow); --active
    ============================================================ */
 *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
 [hidden] { display: none !important; }
-html { font-size: 16px; -webkit-text-size-adjust: 100%; }
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+  background: var(--bg);
+  transition: background-color 0.8s var(--ease-smooth);
+}
 body {
   font-family: var(--sans);
   background: var(--bg);
@@ -88,7 +93,7 @@ body {
   min-height: 100dvh; /* BUG-025: vh fallback for older browsers */
   overflow-x: hidden;
   position: relative;
-  transition: background 0.8s var(--ease-smooth), color 0.8s var(--ease-smooth);
+  transition: background-color 0.8s var(--ease-smooth), color 0.8s var(--ease-smooth);
 }
 
 /* ============================================================
@@ -1072,6 +1077,7 @@ body.flow-shield-active .controls:hover {
 /* 1. Zen Mode Serenity Styles */
 body.zen-mode-active {
   background: linear-gradient(135deg, var(--zen-bg-1, #07070b), var(--zen-bg-2, #11051b), var(--zen-bg-3, #040c17), var(--zen-bg-4, #0b0312)) !important;
+  background-color: var(--bg) !important;
   background-size: 400% 400% !important;
   animation: zen-bg-morph 16s ease infinite alternate !important;
   overflow: hidden;
@@ -1903,10 +1909,11 @@ body.zen-mode-active .app-footer {
   z-index: 0;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 1.5s var(--ease-smooth);
+  transition: opacity 0.1s ease-out;
 }
 body.zen-mode-active #zen-wave-canvas {
   opacity: 0.15;
+  transition: opacity 0.8s var(--ease-smooth);
 }
 
 #zen-bg-canvas {
@@ -1917,10 +1924,11 @@ body.zen-mode-active #zen-wave-canvas {
   z-index: 0;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 1.8s var(--ease-smooth);
+  transition: opacity 0.1s ease-out;
 }
 body.zen-mode-active #zen-bg-canvas {
   opacity: 1;
+  transition: opacity 0.8s var(--ease-smooth);
 }
 
 /* Tag Selection Chips */
@@ -2243,7 +2251,7 @@ body.breath-mode-active .focus-back-btn {
   z-index: 0;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.8s var(--ease-smooth);
+  transition: opacity 0.1s ease-out;
 }
 
 #zen-wave-canvas {
@@ -2255,7 +2263,7 @@ body.breath-mode-active .focus-back-btn {
   z-index: 1;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.8s var(--ease-smooth);
+  transition: opacity 0.1s ease-out;
 }
 
 body.zen-mode-active {
@@ -2266,11 +2274,13 @@ body.zen-mode-active {
     var(--zen-bg-3, #040c17),
     var(--zen-bg-4, #0b0312)
   ) !important;
+  background-color: var(--bg) !important;
   background-size: 400% 400% !important;
   animation: zenGradientShift 30s ease infinite !important;
   overflow: hidden !important;
   height: 100vh !important;
   height: 100dvh !important;
+  transition: color 0.8s var(--ease-smooth) !important;
 }
 
 body.zen-mode-active .app-shell {
@@ -2288,10 +2298,12 @@ body.zen-mode-active .app-shell {
 
 body.zen-mode-active #zen-bg-canvas {
   opacity: 1;
+  transition: opacity 0.8s var(--ease-smooth);
 }
 
 body.zen-mode-active #zen-wave-canvas {
   opacity: 1;
+  transition: opacity 0.8s var(--ease-smooth);
 }
 
 /* Hide non-essential UI in Zen Mode */
@@ -2343,6 +2355,7 @@ body.zen-mode-active .timer-main {
   z-index: 2;
   margin: auto !important;
   padding: 0 !important;
+  transform: translateY(-35px);
 }
 
 /* Show the zen-toggle-btn even in zen mode so user can exit */
