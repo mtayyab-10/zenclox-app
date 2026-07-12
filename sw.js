@@ -1,4 +1,4 @@
-const CACHE = 'zenclox-v17';
+const CACHE = 'zenclox-v18';
 const ASSETS = ['./', './index.html', './style.css', './app.js', './features.js', './manifest.json', './favicon.png'];
 
 self.addEventListener('install', e => {
