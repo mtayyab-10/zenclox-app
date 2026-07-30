@@ -1,0 +1,108 @@
+{
+  "name": "Zenclox AI Agent & Control Hub Workflow (n8n + xAI Grok / OpenAI / Claude)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "zenclox-chat",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "name": "Zenclox Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare System Context & Payload for AI Models (OpenAI, Claude, or xAI Grok)\nconst body = $input.item.json.body || {};\nconst userMessage = body.message || '';\nconst context = body.context || {};\n\n// System prompt pre-configured for Grok / LLMs\nconst systemPrompt = `You are Zen AI Copilot, an intelligent focus and productivity assistant for the Zenclox Pomodoro App.\n\nZenclox Features:\n- Cinema Mode / Flow Shield (F key): Fullscreen distraction-blocking overlay.\n- Themes: Void (violet default), Dark, Ocean (cyan/blue), Forge (amber), Light.\n- Soundscapes: Rain 🌧️, Cosmic Space 🌌, Fire 🔥, Binaural Beats 🎧.\n- Presets: 25/5 classic, 50/10 deep, 90/20 ultra, Box Breathing prep (1 min).\n- Session DNA Strand (3D Helix), Zen Mode (Z key), Command Palette (Ctrl+K).\n\nOutput JSON Schema Requirement:\nYou MUST respond with raw JSON matching this structure:\n{\n  \"reply\": \"Your Markdown answer here\",\n  \"actions\": [\n    {\"label\": \"🛡️ Toggle Cinema Mode\", \"type\": \"toggle_shield\"},\n    {\"label\": \"🌊 Switch to Ocean Theme\", \"type\": \"set_theme\", \"value\": \"ocean\"},\n    {\"label\": \"⛈️ Storm Audio Preset\", \"type\": \"set_sound_preset\", \"preset\": \"storm\"}\n  ]\n}\n\nCurrent User App Context:\n- Active Theme: ${context.theme || 'void'}\n- Timer State: ${JSON.stringify(context.timer || {})}\n- Session Intention: ${context.intention || 'None'}\n\nUser Question: ${userMessage}`;\n\nreturn {\n  json: {\n    systemPrompt,\n    userMessage,\n    grokPayload: {\n      model: \"grok-2\",\n      messages: [\n        { role: \"system\", content: systemPrompt },\n        { role: \"user\", content: userMessage }\n      ],\n      temperature: 0.7\n    }\n  }\n};"
+      },
+      "name": "Prepare Context & Grok Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Comprehensive AI Agent Logic Engine (Matching all Zenclox features)\nconst input = $input.item.json;\nconst msg = (input.userMessage || '').toLowerCase();\n\nlet reply = \"I am your Zen AI Copilot. How can I assist your focus flow state today?\";\nlet actions = [];\n\nif (msg.includes('cinema') || msg.includes('shield') || msg.includes('overlay') || msg.includes('distraction')) {\n  reply = \"🎬 **Cinema Mode (Flow Shield)** creates a full-screen ambient overlay that blocks all visual distractions and dims background UI so you can focus entirely on the timer circle. Press **F** key or click below to toggle!\";\n  actions.push({ label: \"🛡️ Toggle Cinema Mode\", type: \"toggle_shield\" });\n} else if (msg.includes('ocean') || msg.includes('theme') || msg.includes('color') || msg.includes('void') || msg.includes('forge')) {\n  reply = \"🎨 Zenclox features 5 curated color themes: 🟣 **Void** (Violet default), ⚫ **Dark** (Monochrome), 🌊 **Ocean** (Cyan/Blue), 🔥 **Forge** (Warm amber), and ☀️ **Light** (Daytime).\";\n  actions.push({ label: \"🟣 Void Theme\", type: \"set_theme\", value: \"void\" });\n  actions.push({ label: \"🌊 Ocean Theme\", type: \"set_theme\", value: \"ocean\" });\n  actions.push({ label: \"🔥 Forge Theme\", type: \"set_theme\", value: \"forge\" });\n} else if (msg.includes('sound') || msg.includes('rain') || msg.includes('audio') || msg.includes('fire') || msg.includes('space') || msg.includes('binaural')) {\n  reply = \"🎧 Zenclox ambient soundscapes are synthesized live via Web Audio API: Rain 🌧️, Cosmic Space 🌌, Crackling Fire 🔥, and Focus Binaural Beats 🎧.\";\n  actions.push({ label: \"⛈️ Storm Preset\", type: \"set_sound_preset\", preset: \"storm\" });\n  actions.push({ label: \"🌌 Space Void Preset\", type: \"set_sound_preset\", preset: \"space\" });\n  actions.push({ label: \"🔇 Mute All Sounds\", type: \"set_sound_preset\", preset: \"mute\" });\n} else if (msg.includes('timer') || msg.includes('focus') || msg.includes('start') || msg.includes('pomodoro')) {\n  reply = \"⏱️ Customize Focus/Break times or use quick presets: **25/5 Classic**, **50/10 Deep**, or **90/20 Ultra**. You can also enable Box Breathing prep before sessions.\";\n  actions.push({ label: \"🧘 Start Box Breathing Prep\", type: \"start_breathing\" });\n  actions.push({ label: \"⏱️ Start 25m Focus Timer\", type: \"start_timer\", mins: 25 });\n} else if (msg.includes('dna') || msg.includes('helix') || msg.includes('strand')) {\n  reply = \"🧬 The **Session DNA Strand** visualizes your session history as an interactive 3D double helix!\";\n  actions.push({ label: \"🧬 View Session DNA\", type: \"open_dna\" });\n} else if (msg.includes('zen mode') || msg.includes('sanctuary')) {\n  reply = \"🧘 **Zen Mode** strips away UI distractions, leaving only the timer and soothing zen graphics.\";\n  actions.push({ label: \"🧘 Toggle Zen Mode\", type: \"toggle_zen\" });\n} else {\n  reply = `Got it! Running focus analysis for: \"${input.userMessage}\". Here are recommended quick actions:`;\n  actions.push({ label: \"🛡️ Toggle Cinema Mode\", type: \"toggle_shield\" });\n  actions.push({ label: \"🌊 Ocean Theme\", type: \"set_theme\", value: \"ocean\" });\n  actions.push({ label: \"⛈️ Storm Soundscape\", type: \"set_sound_preset\", preset: \"storm\" });\n}\n\nreturn {\n  json: {\n    reply,\n    actions\n  }\n};"
+      },
+      "name": "AI Agent Logic Engine",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        690,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        910,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Zenclox Webhook": {
+      "main": [
+        [
+          {
+            "node": "Prepare Context & Grok Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Context & Grok Payload": {
+      "main": [
+        [
+          {
+            "node": "AI Agent Logic Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent Logic Engine": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

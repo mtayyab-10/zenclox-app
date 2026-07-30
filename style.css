@@ -2693,3 +2693,822 @@ body.zen-mode-active .zen-btn:hover {
   background: var(--active-glow);
 }
 
+/* ============================================================
+   ZEN AI COMMAND & CONTROL HUB (n8n AI + Hub Widget)
+   ============================================================ */
+#zen-ai-hub-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9900;
+  font-family: var(--sans);
+}
+
+/* Floating Trigger Button */
+.zen-ai-trigger-btn {
+  position: relative;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--active), var(--focus, #6366f1));
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  font-size: 1.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 8px 24px var(--active-glow), 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: transform 0.25s var(--ease), box-shadow 0.25s var(--ease);
+}
+
+.zen-ai-trigger-btn:hover {
+  transform: scale(1.08) translateY(-2px);
+  box-shadow: 0 12px 32px var(--active-glow), 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.zen-ai-trigger-btn:active {
+  transform: scale(0.95);
+}
+
+.zen-ai-trigger-pulse {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  right: -4px;
+  bottom: -4px;
+  border-radius: 50%;
+  border: 2px solid var(--active);
+  animation: zenAiPulse 2.5s infinite;
+  pointer-events: none;
+}
+
+@keyframes zenAiPulse {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.15); opacity: 0; }
+  100% { transform: scale(0.95); opacity: 0; }
+}
+
+.zen-ai-trigger-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--surface);
+}
+
+/* Glassmorphic Drawer Modal */
+.zen-ai-drawer {
+  position: fixed;
+  bottom: 90px;
+  right: 24px;
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  height: 560px;
+  max-height: calc(100vh - 120px);
+  background: var(--surface-1, rgba(15, 15, 20, 0.92));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: zenAiSlideUp 0.3s var(--ease);
+}
+
+@keyframes zenAiSlideUp {
+  from { opacity: 0; transform: translateY(20px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Header */
+.zen-ai-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.03));
+  border-bottom: 1px solid var(--border);
+}
+
+.zen-ai-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.zen-ai-logo-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--active), var(--focus, #6366f1));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 0.95rem;
+}
+
+.zen-ai-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.zen-ai-subtitle {
+  font-size: 0.65rem;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.zen-ai-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #9ca3af;
+}
+
+.zen-ai-status-dot.online {
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+}
+
+.zen-ai-status-dot.local {
+  background: var(--active);
+}
+
+.zen-ai-header-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.zen-ai-icon-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.zen-ai-icon-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* Tabs */
+.zen-ai-tabs {
+  display: flex;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  padding: 4px;
+}
+
+.zen-ai-tab {
+  flex: 1;
+  padding: 8px 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: none;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.zen-ai-tab.active {
+  color: var(--text);
+  background: var(--surface-1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Tab Contents */
+.zen-ai-tab-content {
+  display: none;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 14px;
+}
+
+.zen-ai-tab-content.active {
+  display: flex;
+}
+
+/* Prompt Chips */
+.zen-ai-prompt-chips {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 10px;
+  margin-bottom: 6px;
+  scrollbar-width: none;
+}
+
+.zen-ai-prompt-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.zen-ai-chip {
+  white-space: nowrap;
+  font-size: 0.66rem;
+  font-weight: 500;
+  padding: 5px 11px;
+  border-radius: 100px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.zen-ai-chip:hover {
+  color: var(--text);
+  border-color: var(--active);
+  background: var(--active-glow);
+}
+
+/* Messages Container */
+.zen-ai-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.zen-ai-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 90%;
+}
+
+.zen-ai-msg.user {
+  align-self: flex-end;
+}
+
+.zen-ai-msg.ai {
+  align-self: flex-start;
+}
+
+.zen-ai-msg-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.62rem;
+  color: var(--muted);
+  padding: 0 4px;
+}
+
+.zen-ai-msg-bubble {
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.zen-ai-msg.user .zen-ai-msg-bubble {
+  background: linear-gradient(135deg, var(--active), var(--focus, #6366f1));
+  color: #ffffff;
+  border-bottom-right-radius: 4px;
+}
+
+.zen-ai-msg.ai .zen-ai-msg-bubble {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+}
+
+/* Action Cards Inside Chat */
+.zen-ai-msg-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.zen-ai-action-btn {
+  padding: 6px 12px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  font-family: var(--sans);
+  color: var(--active);
+  background: var(--active-glow);
+  border: 1px solid var(--active);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.zen-ai-action-btn:hover {
+  background: var(--active);
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px var(--active-glow);
+}
+
+/* Chat Input Form */
+.zen-ai-chat-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+#zen-ai-chat-input {
+  flex: 1;
+  padding: 10px 14px;
+  font-size: 0.8rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+#zen-ai-chat-input:focus {
+  border-color: var(--active);
+  box-shadow: 0 0 0 2px var(--active-glow);
+}
+
+.zen-ai-send-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--active);
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s, background 0.15s;
+}
+
+.zen-ai-send-btn:hover {
+  transform: scale(1.05);
+}
+
+/* Typing indicator */
+.zen-ai-msg.typing .zen-ai-msg-bubble {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 16px;
+}
+
+.zen-ai-msg.typing .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+  animation: zenAiBlink 1.4s infinite ease-in-out both;
+}
+
+.zen-ai-msg.typing .dot:nth-child(1) { animation-delay: -0.32s; }
+.zen-ai-msg.typing .dot:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes zenAiBlink {
+  0%, 80%, 100% { transform: scale(0); }
+  40% { transform: scale(1); }
+}
+
+/* Sound Deck Tab */
+.zen-ai-section-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.zen-ai-sound-presets {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.zen-ai-preset-btn {
+  padding: 8px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.zen-ai-preset-btn:hover {
+  border-color: var(--active);
+  background: var(--active-glow);
+}
+
+.zen-ai-volume-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.zen-ai-vol-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.75rem;
+  color: var(--text);
+  background: var(--surface-2);
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+.zen-ai-vol-row.master {
+  border-color: var(--active);
+  background: var(--active-glow);
+}
+
+.zen-ai-vol-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  outline: none;
+  cursor: pointer;
+}
+
+.zen-ai-vol-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--active);
+  cursor: pointer;
+}
+
+.zen-ai-vol-val {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  width: 36px;
+  text-align: right;
+  color: var(--muted);
+}
+
+/* Goal & Subtasks Tab */
+.zen-ai-goal-box {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+#zen-ai-goal-input {
+  flex: 1;
+  padding: 10px 12px;
+  font-size: 0.8rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  outline: none;
+}
+
+.zen-ai-subtask-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.zen-ai-mini-btn {
+  padding: 4px 10px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--active);
+  background: var(--active-glow);
+  border: 1px solid var(--active);
+  border-radius: 100px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.zen-ai-mini-btn:hover {
+  background: var(--active);
+  color: #fff;
+}
+
+.zen-ai-subtask-form {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+#zen-ai-subtask-input {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 0.74rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  outline: none;
+}
+
+.zen-ai-mini-add-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--active);
+  border: none;
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.zen-ai-subtask-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.zen-ai-subtask-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.74rem;
+  color: var(--text);
+}
+
+.zen-ai-subtask-item.done span {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+.zen-ai-del-subtask {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.zen-ai-empty-subtask {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-style: italic;
+  text-align: center;
+  padding: 16px 0;
+}
+
+/* Config Modal */
+.zen-ai-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(8px);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.zen-ai-modal-content {
+  width: 380px;
+  max-width: 100%;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.zen-ai-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.zen-ai-modal-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.zen-ai-modal-desc {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.zen-ai-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.zen-ai-field-group label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--sub);
+  text-transform: uppercase;
+}
+
+#zen-ai-webhook-input {
+  width: 100%;
+  padding: 10px;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.zen-ai-config-status {
+  font-size: 0.68rem;
+  min-height: 16px;
+}
+
+.zen-ai-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.zen-ai-primary-btn {
+  padding: 8px 14px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--active);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.zen-ai-secondary-btn {
+  padding: 8px 14px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+/* Radio Mode Selector for Settings */
+.zen-ai-mode-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.zen-ai-radio-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.zen-ai-radio-label:hover {
+  border-color: var(--active);
+}
+
+.zen-ai-radio-label.selected {
+  border-color: var(--active);
+  background: var(--active-glow);
+}
+
+.zen-ai-radio-label input {
+  margin-top: 3px;
+  accent-color: var(--active);
+}
+
+.zen-ai-radio-label strong {
+  font-size: 0.76rem;
+  color: var(--text);
+  display: block;
+}
+
+.zen-ai-radio-label p {
+  font-size: 0.66rem;
+  color: var(--muted);
+  margin: 2px 0 0 0;
+  line-height: 1.35;
+}
+
+.zen-ai-developer-fields {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+
+.zen-ai-template-download-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface-2);
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  font-size: 0.68rem;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+.zen-ai-template-download-note a {
+  color: var(--active);
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.zen-ai-template-download-note a:hover {
+  color: var(--focus, #6366f1);
+}
+
+/* Light Theme Overrides */
+[data-theme="light"] .zen-ai-drawer {
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="light"] .zen-ai-msg.ai .zen-ai-msg-bubble {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+/* Responsive adjustments */
+@media (max-width: 480px) {
+  #zen-ai-hub-container {
+    bottom: 16px;
+    right: 16px;
+  }
+  .zen-ai-drawer {
+    right: 16px;
+    bottom: 80px;
+    width: calc(100vw - 32px);
+    height: 500px;
+  }
+}
+
+
