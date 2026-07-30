@@ -1,11 +1,10 @@
 /**
- * Zenclox — Zen AI Command & Control Hub (Zero-Config + Comprehensive Knowledge Engine)
- * Full client-side module connecting Zenclox with Built-in AI + Grok / n8n Webhooks.
+ * Zenclox — Zen AI Command & Control Hub (Modern Squircle + Teaser Tooltip UX)
+ * Full client-side module with squircle chat icon, teaser badge tooltip, and action cards.
  */
 (function () {
   'use strict';
 
-  // State & LocalStorage keys
   const ENGINE_MODE_KEY = 'zenclox_ai_engine_mode';
   const N8N_WEBHOOK_KEY = 'zenclox_n8n_webhook';
   const CHAT_HISTORY_KEY = 'zenclox_ai_chat_history_v1';
@@ -28,7 +27,6 @@
     subtasks = [];
   }
 
-  // Pre-configured Smart Prompts
   const SMART_PROMPTS = [
     { label: '✨ Plan Focus Session', query: 'Break down my current task into a 25-min Pomodoro plan with subtasks.' },
     { label: '🛡️ Toggle Cinema Mode', query: 'What is Cinema Mode / Flow Shield?' },
@@ -36,7 +34,6 @@
     { label: '❓ Explain Session DNA', query: 'What is the Session DNA strand feature and how does it work?' }
   ];
 
-  // Comprehensive RAG Knowledge Base covering ALL Zenclox features
   const ZENCLOX_KNOWLEDGE = [
     {
       keywords: ['cinema', 'shield', 'flow shield', 'distraction overlay', 'curtain', 'mode cinema'],
@@ -126,18 +123,214 @@
     renderSubtasks();
     syncSoundDeckState();
     updateStatusUI();
+    showTeaserTooltip();
   }
 
   function createHubDOM() {
     if (document.getElementById('zen-ai-hub-container')) return;
 
+    // Inject core widget styles directly to guarantee exact visual match
+    if (!document.getElementById('zen-ai-hub-styles')) {
+      const styleEl = document.createElement('style');
+      styleEl.id = 'zen-ai-hub-styles';
+      styleEl.textContent = `
+        #zen-ai-hub-container {
+          position: fixed !important;
+          bottom: 24px !important;
+          right: 24px !important;
+          z-index: 99990 !important;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+          display: flex !important;
+          flex-direction: column !important;
+          align-items: flex-end !important;
+        }
+
+        /* Teaser Tooltip Card Anchored Above Button */
+        #zen-ai-teaser-tooltip {
+          position: absolute !important;
+          bottom: 68px !important;
+          right: 0 !important;
+          width: 250px !important;
+          background: #18181b !important;
+          border: 1px solid rgba(255, 255, 255, 0.18) !important;
+          border-radius: 18px !important;
+          padding: 12px 14px !important;
+          box-shadow: 0 14px 36px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+          color: #ffffff !important;
+          opacity: 0 !important;
+          transform: translateY(12px) scale(0.95) !important;
+          pointer-events: none !important;
+          transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+          z-index: 99950 !important;
+          box-sizing: border-box !important;
+        }
+
+        #zen-ai-teaser-tooltip.visible {
+          opacity: 1 !important;
+          transform: translateY(0) scale(1) !important;
+          pointer-events: auto !important;
+        }
+
+        #zen-ai-teaser-tooltip::after {
+          content: '' !important;
+          position: absolute !important;
+          bottom: -7px !important;
+          right: 20px !important;
+          width: 13px !important;
+          height: 13px !important;
+          background: #18181b !important;
+          border-right: 1px solid rgba(255, 255, 255, 0.18) !important;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.18) !important;
+          transform: rotate(45deg) !important;
+        }
+
+        .zen-ai-teaser-close {
+          position: absolute !important;
+          top: 6px !important;
+          right: 8px !important;
+          background: transparent !important;
+          border: none !important;
+          color: #71717a !important;
+          font-size: 0.95rem !important;
+          cursor: pointer !important;
+          padding: 2px 6px !important;
+          border-radius: 50% !important;
+          transition: color 0.15s ease !important;
+          line-height: 1 !important;
+        }
+
+        .zen-ai-teaser-close:hover {
+          color: #ffffff !important;
+        }
+
+        .zen-ai-teaser-body {
+          display: flex !important;
+          align-items: center !important;
+          gap: 12px !important;
+          cursor: pointer !important;
+        }
+
+        .zen-ai-teaser-avatar {
+          width: 38px !important;
+          height: 38px !important;
+          border-radius: 12px !important;
+          background: #27272a !important;
+          border: 1px solid rgba(255, 255, 255, 0.15) !important;
+          color: #e4e4e7 !important;
+          font-size: 0.78rem !important;
+          font-weight: 700 !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          flex-shrink: 0 !important;
+        }
+
+        .zen-ai-teaser-content {
+          display: flex !important;
+          flex-direction: column !important;
+          gap: 1px !important;
+        }
+
+        .zen-ai-teaser-title {
+          font-size: 0.82rem !important;
+          font-weight: 700 !important;
+          color: #f4f4f5 !important;
+          line-height: 1.2 !important;
+        }
+
+        .zen-ai-teaser-status {
+          font-size: 0.66rem !important;
+          color: #a1a1aa !important;
+          display: flex !important;
+          align-items: center !important;
+          gap: 5px !important;
+          margin-top: 1px !important;
+        }
+
+        .zen-ai-teaser-dot {
+          width: 6px !important;
+          height: 6px !important;
+          border-radius: 50% !important;
+          background: #22c55e !important;
+          box-shadow: 0 0 6px #22c55e !important;
+        }
+
+        .zen-ai-teaser-msg {
+          font-size: 0.71rem !important;
+          color: #d4d4d8 !important;
+          margin-top: 4px !important;
+          line-height: 1.3 !important;
+        }
+
+        /* Dark Squircle Floating Trigger Button */
+        #zen-ai-trigger-btn {
+          position: relative !important;
+          width: 52px !important;
+          height: 52px !important;
+          border-radius: 16px !important;
+          background: #18181b !important;
+          border: 1px solid rgba(255, 255, 255, 0.18) !important;
+          color: #f4f4f5 !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          cursor: pointer !important;
+          box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+          transition: transform 0.25s ease, background 0.25s ease, box-shadow 0.25s ease !important;
+        }
+
+        #zen-ai-trigger-btn:hover {
+          transform: scale(1.06) translateY(-2px) !important;
+          background: #27272a !important;
+          border-color: rgba(255, 255, 255, 0.28) !important;
+          box-shadow: 0 14px 32px rgba(0, 0, 0, 0.7) !important;
+        }
+
+        #zen-ai-trigger-badge {
+          position: absolute !important;
+          top: -4px !important;
+          right: -4px !important;
+          background: #ef4444 !important;
+          color: #ffffff !important;
+          font-size: 0.65rem !important;
+          font-weight: 700 !important;
+          width: 18px !important;
+          height: 18px !important;
+          border-radius: 50% !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          border: 2px solid #18181b !important;
+          box-shadow: 0 2px 6px rgba(239, 68, 68, 0.5) !important;
+        }
+      `;
+      document.head.appendChild(styleEl);
+    }
+
     const container = document.createElement('div');
     container.id = 'zen-ai-hub-container';
     container.innerHTML = `
-      <!-- FLOATING TRIGGER BUTTON -->
-      <button id="zen-ai-trigger-btn" class="zen-ai-trigger-btn" title="Zen AI Copilot & Control Hub (Alt+A)" aria-label="Open Zen AI Hub">
-        <span class="zen-ai-trigger-icon">⚡</span>
-        <span class="zen-ai-trigger-pulse"></span>
+      <!-- TEASER TOOLTIP CARD (ANCHORED ABOVE BUTTON) -->
+      <div id="zen-ai-teaser-tooltip" class="zen-ai-teaser-tooltip">
+        <button id="zen-ai-teaser-close" class="zen-ai-teaser-close" title="Dismiss">&times;</button>
+        <div class="zen-ai-teaser-body" id="zen-ai-teaser-click-area">
+          <div class="zen-ai-teaser-avatar">AI</div>
+          <div class="zen-ai-teaser-content">
+            <div class="zen-ai-teaser-title">Zen AI Assistant</div>
+            <div class="zen-ai-teaser-status">
+              <span class="zen-ai-teaser-dot"></span> Online now
+            </div>
+            <div class="zen-ai-teaser-msg">Ready to maximize your focus flow?</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FLOATING SQUIRCLE TRIGGER BUTTON -->
+      <button id="zen-ai-trigger-btn" class="zen-ai-trigger-btn" title="Zen AI Copilot (Alt+A)" aria-label="Open Zen AI Hub">
+        <svg class="zen-ai-chat-svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
+        <span id="zen-ai-trigger-badge" class="zen-ai-trigger-badge">1</span>
       </button>
 
       <!-- MAIN DRAWER MODAL -->
@@ -146,12 +339,12 @@
         <!-- DRAWER HEADER -->
         <div class="zen-ai-header">
           <div class="zen-ai-brand">
-            <div class="zen-ai-logo-badge">⚡</div>
+            <div class="zen-ai-logo-badge">AI</div>
             <div>
-              <div class="zen-ai-title">Zen AI Copilot</div>
+              <div class="zen-ai-title">Zen AI Assistant</div>
               <div class="zen-ai-subtitle">
                 <span id="zen-ai-status-dot" class="zen-ai-status-dot online"></span>
-                <span id="zen-ai-status-text">Ready &amp; Active</span>
+                <span id="zen-ai-status-text">Online now</span>
               </div>
             </div>
           </div>
@@ -305,6 +498,10 @@
   function cacheElements() {
     elements = {
       triggerBtn: document.getElementById('zen-ai-trigger-btn'),
+      triggerBadge: document.getElementById('zen-ai-trigger-badge'),
+      teaserTooltip: document.getElementById('zen-ai-teaser-tooltip'),
+      teaserClose: document.getElementById('zen-ai-teaser-close'),
+      teaserClickArea: document.getElementById('zen-ai-teaser-click-area'),
       drawer: document.getElementById('zen-ai-drawer'),
       closeBtn: document.getElementById('zen-ai-close-btn'),
       configBtn: document.getElementById('zen-ai-config-btn'),
@@ -332,6 +529,20 @@
   function bindEvents() {
     elements.triggerBtn.addEventListener('click', toggleDrawer);
     elements.closeBtn.addEventListener('click', closeDrawer);
+
+    if (elements.teaserClickArea) {
+      elements.teaserClickArea.addEventListener('click', () => {
+        hideTeaserTooltip();
+        toggleDrawer();
+      });
+    }
+
+    if (elements.teaserClose) {
+      elements.teaserClose.addEventListener('click', (e) => {
+        e.stopPropagation();
+        hideTeaserTooltip();
+      });
+    }
 
     window.addEventListener('keydown', (e) => {
       if (e.altKey && e.key.toLowerCase() === 'a') {
@@ -412,7 +623,26 @@
     elements.testWebhookBtn.addEventListener('click', testWebhookConnection);
   }
 
+  function showTeaserTooltip() {
+    if (elements.teaserTooltip) {
+      setTimeout(() => {
+        elements.teaserTooltip.classList.add('visible');
+      }, 200);
+    }
+  }
+
+  function hideTeaserTooltip() {
+    if (elements.teaserTooltip) {
+      elements.teaserTooltip.classList.remove('visible');
+      sessionStorage.setItem('zenclox_ai_teaser_dismissed', 'true');
+    }
+    if (elements.triggerBadge) {
+      elements.triggerBadge.style.display = 'none';
+    }
+  }
+
   function toggleDrawer() {
+    hideTeaserTooltip();
     const isHidden = elements.drawer.hidden;
     elements.drawer.hidden = !isHidden;
     if (isHidden) {
@@ -590,7 +820,7 @@
         { label: '🎯 View Goal Checklist', type: 'switch_tab', tab: 'goal' }
       ]);
     } else {
-      handleAIResponse(`I am your **Zen AI Copilot**. I can help optimize your focus state, switch themes, adjust soundscapes, or guide your sessions.`, [
+      handleAIResponse(`I am your **Zen AI Assistant**. I can help optimize your focus state, switch themes, adjust soundscapes, or guide your sessions.`, [
         { label: '🛡️ Toggle Cinema Mode', type: 'toggle_shield' },
         { label: '🌊 Set Ocean Vibe', type: 'set_theme', value: 'ocean' },
         { label: '⛈️ Cozy Storm Audio', type: 'set_sound_preset', preset: 'storm' }
@@ -617,7 +847,7 @@
     elements.messagesContainer.innerHTML = chatHistory.map(msg => `
       <div class="zen-ai-msg ${msg.sender}">
         <div class="zen-ai-msg-header">
-          <span class="zen-ai-msg-author">${msg.sender === 'user' ? 'You' : '⚡ Zen AI'}</span>
+          <span class="zen-ai-msg-author">${msg.sender === 'user' ? 'You' : 'Zen AI'}</span>
           <span class="zen-ai-msg-time">${msg.time}</span>
         </div>
         <div class="zen-ai-msg-bubble">${formatMarkdown(msg.text)}</div>
@@ -764,7 +994,7 @@
   };
 
   function sendWelcomeMessage() {
-    handleAIResponse(`Hello! 👋 I am your **Zen AI Copilot**.
+    handleAIResponse(`Hello! 👋 I am your **Zen AI Assistant**.
 How can I assist your focus session today? You can ask me questions, adjust sounds, or click any prompt chip below!`);
   }
 
@@ -799,7 +1029,7 @@ How can I assist your focus session today? You can ask me questions, adjust soun
 
   function updateStatusUI() {
     if (elements.statusText) {
-      elements.statusText.textContent = engineMode === 'custom_n8n' ? 'Custom AI Connected' : 'Ready & Active';
+      elements.statusText.textContent = engineMode === 'custom_n8n' ? 'Custom AI Connected' : 'Online now';
     }
     if (elements.statusDot) {
       elements.statusDot.className = `zen-ai-status-dot ${engineMode === 'custom_n8n' ? 'n8n' : 'online'}`;

@@ -2702,68 +2702,189 @@ body.zen-mode-active .zen-btn:hover {
   right: 24px;
   z-index: 9900;
   font-family: var(--sans);
-}
-
-/* Floating Trigger Button */
-.zen-ai-trigger-btn {
-  position: relative;
-  width: 54px;
-  height: 54px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--active), var(--focus, #6366f1));
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  color: #ffffff;
-  font-size: 1.4rem;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: 0 8px 24px var(--active-glow), 0 2px 8px rgba(0, 0, 0, 0.3);
-  transition: transform 0.25s var(--ease), box-shadow 0.25s var(--ease);
+  flex-direction: column;
+  align-items: flex-end;
 }
 
-.zen-ai-trigger-btn:hover {
-  transform: scale(1.08) translateY(-2px);
-  box-shadow: 0 12px 32px var(--active-glow), 0 4px 12px rgba(0, 0, 0, 0.4);
+/* Teaser Tooltip Card Anchored Above Button */
+#zen-ai-teaser-tooltip {
+  position: absolute !important;
+  bottom: 68px !important;
+  right: 0 !important;
+  margin-bottom: 0 !important;
+  background: #18181b !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border-radius: 18px !important;
+  padding: 12px 14px !important;
+  width: 240px !important;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+  opacity: 0;
+  transform: translateY(10px) scale(0.95);
+  pointer-events: none;
+  transition: opacity 0.3s var(--ease), transform 0.3s var(--ease);
+  z-index: 9950 !important;
 }
 
-.zen-ai-trigger-btn:active {
-  transform: scale(0.95);
+#zen-ai-teaser-tooltip.visible {
+  opacity: 1 !important;
+  transform: translateY(0) scale(1) !important;
+  pointer-events: auto !important;
+}
+
+/* Downward Pointing Arrow Notch */
+#zen-ai-teaser-tooltip::after {
+  content: '' !important;
+  position: absolute !important;
+  bottom: -7px !important;
+  right: 20px !important;
+  width: 14px !important;
+  height: 14px !important;
+  background: #18181b !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.16) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16) !important;
+  transform: rotate(45deg) !important;
+}
+
+.zen-ai-teaser-close {
+  position: absolute !important;
+  top: 6px !important;
+  right: 8px !important;
+  background: none !important;
+  border: none !important;
+  color: #a1a1aa !important;
+  font-size: 0.9rem !important;
+  cursor: pointer !important;
+  padding: 2px 6px !important;
+  border-radius: 50% !important;
+  transition: color 0.15s !important;
+}
+
+.zen-ai-teaser-close:hover {
+  color: #ffffff !important;
+}
+
+.zen-ai-teaser-body {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  cursor: pointer !important;
+}
+
+.zen-ai-teaser-avatar {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 10px !important;
+  background: #27272a !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  color: #e4e4e7 !important;
+  font-size: 0.75rem !important;
+  font-weight: 700 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+}
+
+.zen-ai-teaser-content {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+}
+
+.zen-ai-teaser-title {
+  font-size: 0.8rem !important;
+  font-weight: 700 !important;
+  color: #f4f4f5 !important;
+  line-height: 1.2 !important;
+}
+
+.zen-ai-teaser-status {
+  font-size: 0.65rem !important;
+  color: #a1a1aa !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+}
+
+.zen-ai-teaser-dot {
+  width: 6px !important;
+  height: 6px !important;
+  border-radius: 50% !important;
+  background: #22c55e !important;
+  box-shadow: 0 0 6px #22c55e !important;
+}
+
+.zen-ai-teaser-msg {
+  font-size: 0.7rem !important;
+  color: #d4d4d8 !important;
+  margin-top: 4px !important;
+  line-height: 1.3 !important;
+}
+
+/* Dark Squircle Floating Trigger Button */
+#zen-ai-trigger-btn {
+  position: relative !important;
+  width: 52px !important;
+  height: 52px !important;
+  border-radius: 16px !important;
+  background: #18181b !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  color: #f4f4f5 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+  transition: transform 0.25s var(--ease), background 0.25s var(--ease), box-shadow 0.25s var(--ease) !important;
+}
+
+#zen-ai-trigger-btn:hover {
+  transform: scale(1.06) translateY(-2px) !important;
+  background: #27272a !important;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.6) !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+}
+
+#zen-ai-trigger-btn:active {
+  transform: scale(0.95) !important;
 }
 
 .zen-ai-trigger-pulse {
-  position: absolute;
-  top: -4px;
-  left: -4px;
-  right: -4px;
-  bottom: -4px;
-  border-radius: 50%;
-  border: 2px solid var(--active);
-  animation: zenAiPulse 2.5s infinite;
-  pointer-events: none;
+  position: absolute !important;
+  top: -4px !important;
+  left: -4px !important;
+  right: -4px !important;
+  bottom: -4px !important;
+  border-radius: 20px !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.2) !important;
+  animation: zenAiPulse 3s infinite !important;
+  pointer-events: none !important;
 }
 
 @keyframes zenAiPulse {
-  0% { transform: scale(0.95); opacity: 0.8; }
-  50% { transform: scale(1.15); opacity: 0; }
-  100% { transform: scale(0.95); opacity: 0; }
+  0% { transform: scale(0.96); opacity: 0.6; }
+  50% { transform: scale(1.12); opacity: 0; }
+  100% { transform: scale(0.96); opacity: 0; }
 }
 
-.zen-ai-trigger-badge {
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  background: #ef4444;
-  color: #fff;
-  font-size: 0.65rem;
-  font-weight: 700;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 2px solid var(--surface);
+#zen-ai-trigger-badge {
+  position: absolute !important;
+  top: -4px !important;
+  right: -4px !important;
+  background: #ef4444 !important;
+  color: #ffffff !important;
+  font-size: 0.65rem !important;
+  font-weight: 700 !important;
+  width: 18px !important;
+  height: 18px !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 2px solid #18181b !important;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.5) !important;
 }
 
 /* Glassmorphic Drawer Modal */
@@ -3510,5 +3631,174 @@ body.zen-mode-active .zen-btn:hover {
     height: 500px;
   }
 }
+
+/* ============================================================
+   EXACT MATCH DESIGN: DARK SQUIRCLE BUTTON & TEASER TOOLTIP CARD
+   ============================================================ */
+
+/* Teaser Tooltip Card (Anchored Above Trigger Button) */
+#zen-ai-teaser-tooltip {
+  position: absolute !important;
+  bottom: 70px !important;
+  right: 0 !important;
+  width: 250px !important;
+  background: #18181b !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border-radius: 18px !important;
+  padding: 12px 14px !important;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+  opacity: 0 !important;
+  transform: translateY(12px) scale(0.95) !important;
+  pointer-events: none !important;
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  z-index: 99950 !important;
+  box-sizing: border-box !important;
+}
+
+#zen-ai-teaser-tooltip.visible {
+  opacity: 1 !important;
+  transform: translateY(0) scale(1) !important;
+  pointer-events: auto !important;
+}
+
+/* Downward Pointing Notch Arrow */
+#zen-ai-teaser-tooltip::after {
+  content: '' !important;
+  position: absolute !important;
+  bottom: -7px !important;
+  right: 20px !important;
+  width: 13px !important;
+  height: 13px !important;
+  background: #18181b !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18) !important;
+  transform: rotate(45deg) !important;
+}
+
+.zen-ai-teaser-close {
+  position: absolute !important;
+  top: 6px !important;
+  right: 8px !important;
+  background: transparent !important;
+  border: none !important;
+  color: #71717a !important;
+  font-size: 0.95rem !important;
+  cursor: pointer !important;
+  padding: 2px 6px !important;
+  border-radius: 50% !important;
+  transition: color 0.15s ease !important;
+  line-height: 1 !important;
+}
+
+.zen-ai-teaser-close:hover {
+  color: #ffffff !important;
+}
+
+.zen-ai-teaser-body {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  cursor: pointer !important;
+}
+
+.zen-ai-teaser-avatar {
+  width: 38px !important;
+  height: 38px !important;
+  border-radius: 12px !important;
+  background: #27272a !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  color: #e4e4e7 !important;
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+}
+
+.zen-ai-teaser-content {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 1px !important;
+}
+
+.zen-ai-teaser-title {
+  font-size: 0.82rem !important;
+  font-weight: 700 !important;
+  color: #f4f4f5 !important;
+  line-height: 1.2 !important;
+}
+
+.zen-ai-teaser-status {
+  font-size: 0.66rem !important;
+  color: #a1a1aa !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  margin-top: 1px !important;
+}
+
+.zen-ai-teaser-dot {
+  width: 6px !important;
+  height: 6px !important;
+  border-radius: 50% !important;
+  background: #22c55e !important;
+  box-shadow: 0 0 6px #22c55e !important;
+}
+
+.zen-ai-teaser-msg {
+  font-size: 0.71rem !important;
+  color: #d4d4d8 !important;
+  margin-top: 4px !important;
+  line-height: 1.3 !important;
+}
+
+/* Dark Squircle Floating Trigger Button */
+#zen-ai-trigger-btn {
+  position: relative !important;
+  width: 52px !important;
+  height: 52px !important;
+  border-radius: 16px !important;
+  background: #18181b !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  color: #f4f4f5 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+  transition: transform 0.25s ease, background 0.25s ease, box-shadow 0.25s ease !important;
+}
+
+#zen-ai-trigger-btn:hover {
+  transform: scale(1.06) translateY(-2px) !important;
+  background: #27272a !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.7) !important;
+}
+
+#zen-ai-trigger-btn:active {
+  transform: scale(0.95) !important;
+}
+
+#zen-ai-trigger-badge {
+  position: absolute !important;
+  top: -4px !important;
+  right: -4px !important;
+  background: #ef4444 !important;
+  color: #ffffff !important;
+  font-size: 0.65rem !important;
+  font-weight: 700 !important;
+  width: 18px !important;
+  height: 18px !important;
+  border-radius: 50% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 2px solid #18181b !important;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.5) !important;
+}
+
 
 
