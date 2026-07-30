@@ -150,11 +150,11 @@
           position: absolute !important;
           bottom: 68px !important;
           right: 0 !important;
-          width: 250px !important;
+          width: 275px !important;
           background: #18181b !important;
           border: 1px solid rgba(255, 255, 255, 0.18) !important;
           border-radius: 18px !important;
-          padding: 12px 14px !important;
+          padding: 12px 16px !important;
           box-shadow: 0 14px 36px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
           color: #ffffff !important;
           opacity: 0 !important;
@@ -197,6 +197,7 @@
           border-radius: 50% !important;
           transition: color 0.15s ease !important;
           line-height: 1 !important;
+          z-index: 2 !important;
         }
 
         .zen-ai-teaser-close:hover {
@@ -229,6 +230,8 @@
           display: flex !important;
           flex-direction: column !important;
           gap: 1px !important;
+          flex: 1 !important;
+          padding-right: 14px !important;
         }
 
         .zen-ai-teaser-title {
@@ -236,6 +239,7 @@
           font-weight: 700 !important;
           color: #f4f4f5 !important;
           line-height: 1.2 !important;
+          white-space: nowrap !important;
         }
 
         .zen-ai-teaser-status {
@@ -318,7 +322,7 @@
           <div class="zen-ai-teaser-content">
             <div class="zen-ai-teaser-title">Zen AI Assistant</div>
             <div class="zen-ai-teaser-status">
-              <span class="zen-ai-teaser-dot"></span> Online now
+              <span class="zen-ai-teaser-dot"></span> Zen Copilot
             </div>
             <div class="zen-ai-teaser-msg">Ready to maximize your focus flow?</div>
           </div>
@@ -330,7 +334,6 @@
         <svg class="zen-ai-chat-svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
         </svg>
-        <span id="zen-ai-trigger-badge" class="zen-ai-trigger-badge">1</span>
       </button>
 
       <!-- MAIN DRAWER MODAL -->
