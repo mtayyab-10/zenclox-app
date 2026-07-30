@@ -1,5 +1,5 @@
-const CACHE = 'zenclox-v23';
-const ASSETS = ['./', './index.html', './style.css', './app.js', './features.js', './manifest.json', './favicon.png'];
+const CACHE = 'zenclox-v24';
+const ASSETS = ['./', './index.html', './style.css', './app.js', './features.js', './manifest.json', './favicon.png', './zen-ai-hub.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
